@@ -33,6 +33,9 @@ final class Scorecard: Identifiable {
     var fullData: Data
     var carreData: Data
     var yamsData: Data
+   
+    var suiteData: Data            // grande suite (1–5 ou 2–6) : 0 / 15 / 20
+    var petiteSuiteData: Data      // petite suite (si activée) : 0 / score paramétré
 
     var locksData: Data
 
@@ -57,6 +60,9 @@ final class Scorecard: Identifiable {
         self.fullData = initArray()
         self.carreData = initArray()
         self.yamsData = initArray()
+        
+        self.suiteData = initArray()
+        self.petiteSuiteData = initArray()
 
         self.locksData = encodeJSON([String: Bool]())
     }
@@ -116,6 +122,16 @@ final class Scorecard: Identifiable {
         get { decodeJSON([Int].self, from: yamsData) }
         set { yamsData = encodeJSON(newValue) }
     }
+    
+    var suite: [Int] {
+            get { decodeJSON([Int].self, from: suiteData) }
+            set { suiteData = encodeJSON(newValue) }
+        }
+    
+    var petiteSuite: [Int] {
+            get { decodeJSON([Int].self, from: petiteSuiteData) }
+            set { petiteSuiteData = encodeJSON(newValue) }
+        }
 
     var locks: [String: Bool] {
         get { decodeJSON([String: Bool].self, from: locksData) }
