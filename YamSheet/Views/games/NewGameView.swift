@@ -6,7 +6,9 @@ struct NewGameView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Player.name) private var players: [Player]
     @Query private var settings: [AppSettings]
-
+    @Query(sort: \Notation.name) private var notations: [Notation]
+    
+    @State private var selectedNotationID: PersistentIdentifier?
     @State private var selected: Set<UUID> = []
     @State private var columns: Int = 1
     @State private var comment: String = ""
@@ -33,8 +35,22 @@ struct NewGameView: View {
                         }
                     }
                 }
+                Section(UIStrings.Notation.tabTitle) {
+                    if notations.isEmpty {
+                        Text("Aucune notation. Créez-en une dans l’onglet Notations.")
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
+                    } else {
+                        Picker("Choix", selection: $selectedNotationID) {
+                            ForEach(notations) { n in
+                                Text(n.name).tag(Optional.some(n.id))
+                            }
+                        }
+                    }
+                }
+                
                 Section("Options") {
-                    Stepper("Colonnes : \(columns)", value: $columns, in: 1...3)
+                   // Stepper("Colonnes : \(columns)", value: $columns, in: 1...3)
                     TextField("Commentaire", text: $comment)
                 }
             }
@@ -50,11 +66,21 @@ struct NewGameView: View {
 
     private func createGame() {
         let appSettings = settings.first ?? AppSettings()
-        if settings.isEmpty {
-            context.insert(appSettings)
-        }
-        let game = Game(settings: appSettings, columns: columns, comment: comment)
-        // Create scorecards
+        if settings.isEmpty { context.insert(appSettings) }
+        
+        // Notation: prendre la sélection ou, à défaut, la première si dispo
+        let chosenNotation: Notation? = {
+            if let id = selectedNotationID {
+                return notations.first(where: { $0.id == id })
+            }
+            return notations.first
+        }()
+        
+        let snapshot = chosenNotation?.snapshot() ?? Notation(name: "Par défaut").snapshot()
+        
+        let game = Game(settings: appSettings, notation: snapshot, columns: columns, comment: comment)
+        
+        // Create scorecards...
         for pid in selected {
             let sc = Scorecard(playerID: pid, columns: columns)
             sc.game = game
@@ -68,4 +94,5 @@ struct NewGameView: View {
         }
         dismiss()
     }
+
 }

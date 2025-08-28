@@ -13,17 +13,17 @@ struct NewPlayerView: View {
     var body: some View {
         NavigationStack {
             Form {
-                TextField("Nom", text: $name)
-                TextField("Surnom", text: $nickname)
-                TextField("Email (optionnel)", text: $email)
+                TextField(UIStrings.Player.name, text: $name)
+                TextField(UIStrings.Player.surname.capitalized, text: $nickname)
+                TextField(UIStrings.Player.email, text: $email)
                     .keyboardType(.emailAddress)
-                Toggle("Invité", isOn: $isGuest)
+                Toggle(UIStrings.Player.invite, isOn: $isGuest)
             }
             .navigationTitle("Nouveau joueur")
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Annuler") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button(UIStrings.Common.cancel) { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Créer") { create() }.disabled(name.isEmpty || nickname.isEmpty)
+                    Button(UIStrings.Common.create) { create() }.disabled(name.isEmpty || nickname.isEmpty)
                 }
             }
         }

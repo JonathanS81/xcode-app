@@ -4,7 +4,8 @@ import SwiftData
 @main
 struct YamSheetApp: App {
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema([AppSettings.self, Player.self, Game.self, Scorecard.self])
+       
+        let schema = Schema([AppSettings.self, Player.self, Game.self, Scorecard.self, Notation.self])
         // Choose a fixed on-disk store URL so we can clean it up if incompatible.
         let storeURL = URL.documentsDirectory.appending(path: "YamSheet.store")
         let diskConfig = ModelConfiguration(url: storeURL)
@@ -13,7 +14,7 @@ struct YamSheetApp: App {
             let container = try ModelContainer(for: schema, configurations: diskConfig)
             // Bootstrap default settings once
             let context = ModelContext(container)
-            if (try? context.fetch(FetchDescriptor<AppSettings>()))?.isEmpty ?? true {
+          if (try? context.fetch(FetchDescriptor<AppSettings>()))?.isEmpty ?? true {
                 context.insert(AppSettings())
                 try? context.save()
             }

@@ -6,25 +6,14 @@ final class AppSettings {
     var upperBonusThreshold: Int
     var upperBonusValue: Int
     var enableSmallStraight: Bool
-    var smallStraightScore: Int      // ← nouveau
+    var smallStraightScore: Int
     var darkMode: Bool
-    var middleModeRaw: String
-    var bottomModeRaw: String
-
-    var middleMode: MiddleMode {
-        get { MiddleMode(rawValue: middleModeRaw) ?? .marieAnne }
-        set { middleModeRaw = newValue.rawValue }
-    }
-    var bottomMode: BottomMode {
-        get { BottomMode(rawValue: bottomModeRaw) ?? .jon }
-        set { bottomModeRaw = newValue.rawValue }
-    }
-
+    
     init(
         upperBonusThreshold: Int = 63,
         upperBonusValue: Int = 35,
         enableSmallStraight: Bool = true,
-        smallStraightScore: Int = 10,   // ← valeur par défaut
+        smallStraightScore: Int = 10,
         darkMode: Bool = false
     ) {
         self.upperBonusThreshold = upperBonusThreshold
@@ -32,8 +21,7 @@ final class AppSettings {
         self.enableSmallStraight = enableSmallStraight
         self.smallStraightScore = smallStraightScore
         self.darkMode = darkMode
-        self.middleModeRaw = MiddleMode.marieAnne.rawValue
-        self.bottomModeRaw = BottomMode.jon.rawValue
     }
 }
+
 
