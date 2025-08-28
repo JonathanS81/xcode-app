@@ -10,6 +10,7 @@ final class Game: Identifiable {
     var middleModeRaw: String
     var bottomModeRaw: String
     var enableSmallStraight: Bool
+    var smallStraightScore: Int    // ← nouveau
 
     // State
     var createdAt: Date
@@ -35,6 +36,7 @@ final class Game: Identifiable {
         self.middleModeRaw = settings.middleModeRaw
         self.bottomModeRaw = settings.bottomModeRaw
         self.enableSmallStraight = settings.enableSmallStraight
+        self.smallStraightScore = settings.smallStraightScore   // ← nouveau
         self.createdAt = Date()
         self.comment = comment
         self.columns = columns

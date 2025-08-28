@@ -174,6 +174,50 @@ struct GameDetailView: View {
             }
         }
     }
+    
+    
+    private func pickerRowCustom(label: String,
+                                     allowedValues: [Int],
+                                     keyPath: WritableKeyPath<Scorecard, [Int]>) -> some View {
+            HStack {
+                Text(label).frame(width: 110, alignment: .leading)
+                ForEach(game.scorecards.indices, id: \.self) { col in
+                    let scBinding = $game.scorecards[col]
+                    let isLocked = scBinding.wrappedValue.isLocked(col: col, key: label)
+                    let binding = valueBinding(scBinding, keyPath, col)
+                    Menu {
+                        Picker("Valeur", selection: binding) {
+                            ForEach([-1] + allowedValues, id: \.self) { v in
+                                switch v {
+                                case -1: Text("—").tag(v)
+                                case 0:  Text("Barré (0)").tag(v)
+                                case 15: Text("1–5 (15)").tag(v)
+                                case 20: Text("2–6 (20)").tag(v)
+                                default: Text(String(v)).tag(v)
+                                }
+                            }
+                        }
+                    } label: {
+                        Text(binding.wrappedValue == -1 ? "—" : String(binding.wrappedValue))
+                            .frame(maxWidth: .infinity)
+                            .padding(8)
+                            .background(cellBackground(col: col, isOpen: binding.wrappedValue == -1))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .disabled(isLocked || col != activeCol)
+                    .contextMenu {
+                        Button("Valider ✅") {
+                            scBinding.wrappedValue.setLocked(true, col: col, key: label)
+                            try? context.save()
+                        }
+                        Button("Effacer ❌") { binding.wrappedValue = -1 }
+                    }
+                }
+            }
+        }
+   
+    
+    
 
     // MARK: - Sections
 
@@ -203,8 +247,20 @@ struct GameDetailView: View {
             numericRow(label: "Brelan", keyPath: \Scorecard.brelan)
             numericRow(label: "Chance", keyPath: \Scorecard.chance)
             numericRow(label: "Full", keyPath: \Scorecard.full)
+            // ← AJOUT DES SUITES :
+            pickerRowCustom(label: "Suite",
+                            allowedValues: [0, 15, 20],
+                            keyPath: \Scorecard.suite)
+
+            if game.enableSmallStraight {
+                pickerRowCustom(label: "Petite suite",
+                                allowedValues: [0, game.smallStraightScore],
+                                keyPath: \Scorecard.petiteSuite)
+            }
             numericRow(label: "Carré", keyPath: \Scorecard.carre)
             numericRow(label: "Yams", keyPath: \Scorecard.yams)
+            
+
         }
     }
 }

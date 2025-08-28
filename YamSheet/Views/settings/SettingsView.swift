@@ -19,14 +19,20 @@ struct SettingsView: View {
                     }
                 }
             }
+
             Section("Section basse") {
-                Picker("Mode", selection: $local.bottomModeRaw) {
-                    ForEach(BottomMode.allCases) { b in
-                        Text(b.rawValue).tag(b.rawValue)
-                    }
-                }
-                Toggle("Petite suite activée", isOn: $local.enableSmallStraight)
-            }
+                            Picker("Mode", selection: $local.bottomModeRaw) {
+                                ForEach(BottomMode.allCases) { b in
+                                    Text(b.rawValue).tag(b.rawValue)
+                                }
+                            }
+                            Toggle("Petite suite activée", isOn: $local.enableSmallStraight)
+                            Stepper("Score petite suite : \(local.smallStraightScore)",
+                                    value: $local.smallStraightScore, in: 0...100)
+                                .disabled(!local.enableSmallStraight)
+                        }
+            
+            
             Section("App") {
                 Toggle("Mode sombre (préférence)", isOn: $local.darkMode)
             }
@@ -52,6 +58,7 @@ struct SettingsView: View {
             s.upperBonusThreshold = local.upperBonusThreshold
             s.upperBonusValue = local.upperBonusValue
             s.enableSmallStraight = local.enableSmallStraight
+            s.smallStraightScore = local.smallStraightScore 
             s.darkMode = local.darkMode
             s.middleModeRaw = local.middleModeRaw
             s.bottomModeRaw = local.bottomModeRaw
