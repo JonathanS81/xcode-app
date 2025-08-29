@@ -1,50 +1,125 @@
 import Foundation
 
-enum ScoreField: String, CaseIterable {
-    // upper
-    case ones, twos, threes, fours, fives, sixes
-    // middle
-    case maxVals, minVals
-    // bottom
-    case brelan, chance, full, carre, yams
+enum FigureKind {
+    case brelan, chance, full, suiteBig, petiteSuite, carre, yams
 }
 
 struct StatsEngine {
-    static func normalize(_ v: Int) -> Int { max(0, v) } // -1 becomes 0 without touching model
+    // -1 => non rempli ; 0 => barré ; sinon valeur
+    static func norm(_ v: Int) -> Int { max(0, v) }
 
-    static func upperTotalWithValues(_ values: [Int], threshold: Int, bonus: Int) -> Int {
-        let base = values.map { normalize($0) }.reduce(0, +)
-        return base + (base >= threshold ? bonus : 0)
+    // MARK: - Upper
+    static func upperTotal(sc: Scorecard, game: Game, col: Int) -> Int {
+        let u = [
+            sc.ones[col], sc.twos[col], sc.threes[col],
+            sc.fours[col], sc.fives[col], sc.sixes[col]
+        ].map(norm).reduce(0, +)
+        let bonus = (u >= game.notation.upperBonusThreshold) ? game.notation.upperBonusValue : 0
+        return u + bonus
     }
 
-    static func middleTotalWithValues(maxVals: Int, minVals: Int, mode: MiddleMode, numberOfAces: Int = 0) -> Int {
-        let maxV = normalize(maxVals)
-        let minV = normalize(minVals)
-        switch mode {
-        case .disabled:
-            return 0
-        case .marieAnne:
-            return (maxV - minV) * numberOfAces
-        case .jon:
-            let sum = maxV + minV
-            if maxV > minV && sum >= 50 { return sum + 30 }
-            return sum
+    // MARK: - Middle
+    static func middleTotal(sc: Scorecard, game: Game, col: Int) -> Int {
+        let maxV = norm(sc.maxVals[col])
+        let minV = norm(sc.minVals[col])
+        switch game.notation.middleMode {
+        case .multiplier:
+            let aces = norm(sc.ones[col]) // #As (0..5)
+            return (maxV - minV) * aces
+        case .bonusGate:
+            var s = maxV + minV
+            if maxV > minV && s >= game.notation.middleBonusSumThreshold {
+                s += game.notation.middleBonusValue
+            }
+            return s
         }
     }
 
-    static func bottomLineValueV2(field: ScoreField, rawValue: Int) -> Int {
-        let v = normalize(rawValue)
-        switch field {
-        case .brelan, .chance:
-            return v
-        case .full:
-            return 30 + v
-        case .carre:
-            return 40 + v
+    // MARK: - Bottom helpers
+    private static func applyFigureRule(_ raw: Int, rule: FigureRule) -> Int {
+        if raw <= 0 { return 0 } // 0 => barré, -1 => vide
+        switch rule.mode {
+        case .raw:           return raw
+        case .fixed:         return rule.fixedValue
+        case .rawPlusFixed:  return raw + rule.fixedValue
+        case .rawTimes:      return raw * max(1, rule.multiplier)
+        }
+    }
+
+    private static func suiteBigScore(raw: Int, n: NotationSnapshot) -> Int {
+        // Convention d’entrée : 0 = barré, 15 = 1–5, 20 = 2–6
+        if raw <= 0 { return 0 }
+        switch n.suiteBigMode {
+        case .singleFixed:
+            return n.suiteBigFixed
+        case .splitFixed:
+            if raw == 15 { return n.suiteBigFixed1to5 }
+            if raw == 20 { return n.suiteBigFixed2to6 }
+            // par sécurité, on retourne la valeur "single" si autre
+            return n.suiteBigFixed
+        }
+    }
+
+    static func bottomTotal(sc: Scorecard, game: Game, col: Int) -> Int {
+        let n = game.notation
+        let brelan = applyFigureRule(sc.brelan[col], rule: n.ruleBrelan)
+        let chance = applyFigureRule(sc.chance[col], rule: n.ruleChance)
+        let full   = applyFigureRule(sc.full[col],   rule: n.ruleFull)
+        let carre  = applyFigureRule(sc.carre[col],  rule: n.ruleCarre)
+        let yamsBase = applyFigureRule(sc.yams[col], rule: n.ruleYams)
+
+        // Grande suite via config dédiée
+        let suite = suiteBigScore(raw: sc.suite[col], n: n)
+        // Petite suite via sa FigureRule (fixed recommandé)
+        let petiteSuite = applyFigureRule(sc.petiteSuite[col], rule: n.rulePetiteSuite)
+
+        let yamsBonus = (n.extraYamsBonusEnabled && norm(sc.yams[col]) > 0) ? n.extraYamsBonusValue : 0
+        return brelan + chance + full + carre + yamsBase + suite + petiteSuite + yamsBonus
+    }
+
+    static func total(sc: Scorecard, game: Game, col: Int) -> Int {
+        upperTotal(sc: sc, game: game, col: col)
+        + middleTotal(sc: sc, game: game, col: col)
+        + bottomTotal(sc: sc, game: game, col: col)
+    }
+
+    // MARK: - Tooltips
+    static func middleTooltip(mode: MiddleRuleMode, threshold: Int, bonus: Int) -> String {
+        switch mode {
+        case .multiplier:
+            return "Multiplier : (Max − Min) × nombre d’As."
+        case .bonusGate:
+            return "BonusGate : si Max > Min et Max+Min ≥ \(threshold) ⇒ +\(bonus)."
+        }
+    }
+
+    static func figureTooltip(notation n: NotationSnapshot, figure: FigureKind) -> String {
+        func desc(_ r: FigureRule) -> String {
+            switch r.mode {
+            case .raw:           return "Somme saisie."
+            case .fixed:         return "Valeur fixe : \(r.fixedValue)."
+            case .rawPlusFixed:  return "Somme saisie + prime fixe \(r.fixedValue)."
+            case .rawTimes:      return "Somme saisie × multiplicateur \(max(1, r.multiplier))."
+            }
+        }
+        switch figure {
+        case .brelan:      return "Brelan — " + desc(n.ruleBrelan)
+        case .chance:      return "Chance — " + desc(n.ruleChance)
+        case .full:        return "Full — " + desc(n.ruleFull)
+        case .carre:       return "Carré — " + desc(n.ruleCarre)
         case .yams:
-            return 50 + v
-        default:
-            return v
+            let base = "Yams — " + desc(n.ruleYams)
+            return n.extraYamsBonusEnabled ? base + " (+\(n.extraYamsBonusValue) bonus si Yams)" : base
+        case .suiteBig:
+            switch n.suiteBigMode {
+            case .singleFixed:
+                return "Suite (5 dés) — Valeur fixe : \(n.suiteBigFixed). (1–5 ou 2–6)"
+            case .splitFixed:
+                return "Suite (5 dés) — 1–5 : \(n.suiteBigFixed1to5) ; 2–6 : \(n.suiteBigFixed2to6)."
+            }
+        case .petiteSuite:
+            return "Petite suite (4 dés) — " + desc(n.rulePetiteSuite)
         }
     }
 }
+

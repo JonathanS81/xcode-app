@@ -5,16 +5,18 @@ struct ContentView: View {
     var body: some View {
         TabView {
             GamesListView()
-                .tabItem { Label("Parties", systemImage: "list.bullet.rectangle") }
+                .tabItem { Label(UIStrings.Common.games, systemImage: "list.bullet.rectangle") }
             PlayersListView()
-                .tabItem { Label("Joueurs", systemImage: "person.3") }
+                .tabItem { Label(UIStrings.Common.players, systemImage: "person.3") }
+            NotationsListView()
+                .tabItem { Label(UIStrings.Common.notations, systemImage: "text.badge.star") }
             SettingsView()
-                .tabItem { Label("Réglages", systemImage: "gear") }
+                .tabItem { Label(UIStrings.Common.settings, systemImage: "gear") }
         }
     }
 }
 
 #Preview {
     ContentView()
-        .modelContainer(for: [AppSettings.self, Player.self, Game.self, Scorecard.self], inMemory: true)
+  .modelContainer(for: [AppSettings.self, Player.self, Game.self, Scorecard.self], inMemory: true)
 }

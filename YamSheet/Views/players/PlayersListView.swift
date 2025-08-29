@@ -22,10 +22,10 @@ struct PlayersListView: View {
                     try? context.save()
                 }
             }
-            .navigationTitle("Joueurs")
+            .navigationTitle(UIStrings.Common.players)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { showingNew = true } label: { Label("Ajouter", systemImage: "plus") }
+                    Button { showingNew = true } label: { Label(UIStrings.Common.toadd, systemImage: "plus") }
                 }
             }
             .sheet(isPresented: $showingNew) {

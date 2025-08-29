@@ -8,31 +8,18 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            Section("Section haute") {
-                Stepper("Seuil bonus haut : \(local.upperBonusThreshold)", value: $local.upperBonusThreshold, in: 0...200)
-                Stepper("Bonus haut : \(local.upperBonusValue)", value: $local.upperBonusValue, in: 0...200)
+            Section(UIStrings.Game.upperSection) {
+                Stepper(UIStrings.Notation.upperBonusThresholdLabel+" : \(local.upperBonusThreshold)",
+                        value: $local.upperBonusThreshold, in: 0...200)
+                Stepper(UIStrings.Notation.upperBonusLabel+" : \(local.upperBonusValue)",
+                        value: $local.upperBonusValue, in: 0...200)
             }
-            Section("Section milieu") {
-                Picker("Mode", selection: $local.middleModeRaw) {
-                    ForEach(MiddleMode.allCases) { m in
-                        Text(m.rawValue).tag(m.rawValue)
-                    }
-                }
+            Section(UIStrings.Game.bottomSection) {
+                Toggle("Petite suite activée", isOn: $local.enableSmallStraight)
+                Stepper("Score petite suite : \(local.smallStraightScore)",
+                        value: $local.smallStraightScore, in: 0...100)
+                    .disabled(!local.enableSmallStraight)
             }
-
-            Section("Section basse") {
-                            Picker("Mode", selection: $local.bottomModeRaw) {
-                                ForEach(BottomMode.allCases) { b in
-                                    Text(b.rawValue).tag(b.rawValue)
-                                }
-                            }
-                            Toggle("Petite suite activée", isOn: $local.enableSmallStraight)
-                            Stepper("Score petite suite : \(local.smallStraightScore)",
-                                    value: $local.smallStraightScore, in: 0...100)
-                                .disabled(!local.enableSmallStraight)
-                        }
-            
-            
             Section("App") {
                 Toggle("Mode sombre (préférence)", isOn: $local.darkMode)
             }
@@ -58,10 +45,8 @@ struct SettingsView: View {
             s.upperBonusThreshold = local.upperBonusThreshold
             s.upperBonusValue = local.upperBonusValue
             s.enableSmallStraight = local.enableSmallStraight
-            s.smallStraightScore = local.smallStraightScore 
+            s.smallStraightScore = local.smallStraightScore
             s.darkMode = local.darkMode
-            s.middleModeRaw = local.middleModeRaw
-            s.bottomModeRaw = local.bottomModeRaw
             try? context.save()
         } else {
             context.insert(local)
@@ -69,3 +54,4 @@ struct SettingsView: View {
         }
     }
 }
+

@@ -7,25 +7,25 @@ struct PlayerDetailView: View {
 
     var body: some View {
         Form {
-            Section("Identité") {
-                TextField("Nom", text: $player.name)
-                TextField("Surnom", text: $player.nickname)
-                TextField("Email", text: Binding(get: { player.email ?? "" }, set: { player.email = $0.isEmpty ? nil : $0 }))
-                Toggle("Invité", isOn: $player.isGuest)
+            Section(UIStrings.Common.identity) {
+                TextField(UIStrings.Player.name, text: $player.name)
+                TextField(UIStrings.Player.surname, text: $player.nickname)
+                TextField(UIStrings.Player.email, text: Binding(get: { player.email ?? "" }, set: { player.email = $0.isEmpty ? nil : $0 }))
+                Toggle(UIStrings.Player.invite, isOn: $player.isGuest)
             }
-            Section("Stats") {
-                LabeledContent("Parties", value: String(player.gamesCount))
-                LabeledContent("Yams", value: String(player.yamsCount))
-                LabeledContent("Moyenne", value: String(format: "%.1f", player.averageScore))
-                LabeledContent("Meilleur", value: String(player.bestScore))
-                LabeledContent("Pire", value: String(player.worstScore))
-                LabeledContent("Victoires", value: String(player.wins))
-                LabeledContent("Défaites", value: String(player.losses))
+            Section(UIStrings.Common.stats) {
+                LabeledContent(UIStrings.Common.games, value: String(player.gamesCount))
+                LabeledContent(UIStrings.Game.yams, value: String(player.yamsCount))
+                LabeledContent(UIStrings.Common.avg, value: String(format: "%.1f", player.averageScore))
+                LabeledContent(UIStrings.Common.best, value: String(player.bestScore))
+                LabeledContent(UIStrings.Common.worst, value: String(player.worstScore))
+                LabeledContent(UIStrings.Common.wins, value: String(player.wins))
+                LabeledContent(UIStrings.Common.losses, value: String(player.losses))
             }
         }
         .navigationTitle(player.nickname)
         .toolbar {
-            ToolbarItem(placement: .confirmationAction) { Button("Sauver") { try? context.save() } }
+            ToolbarItem(placement: .confirmationAction) { Button(UIStrings.Common.save) { try? context.save() } }
         }
     }
 }
