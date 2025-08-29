@@ -124,6 +124,41 @@ enum UIStrings {
         static let listUpperLine = "Haut : Bonus +%d si ≥ %d pouet"
         static let listMiddle    = "Milieu : %@ pouet"
         static let listBottom    = "Bas : tapote une figure pour son détail pouet"
+        
+        // Libellés des modes (section milieu)
+        static let middleLabelMultiplier = "Multiplicateur"
+        static let middleLabelBonusGate  = "Bonus au 50"
+        static func middleLabel(_ mode: MiddleRuleMode) -> String {
+            switch mode {
+            case .multiplier: return middleLabelMultiplier
+            case .bonusGate:  return middleLabelBonusGate
+            }
+        }
+
+        // Libellés des modes (section basse)
+        static let bottomLabelRaw          = "Somme des dés"
+        static let bottomLabelFixed        = "Valeur fixe"
+        static let bottomLabelRawPlusFixed = "Somme + Prime"
+        static let bottomLabelRawTimes     = "Somme × multiplicateur"
+        static func bottomLabel(_ mode: BottomRuleMode) -> String {
+            switch mode {
+            case .raw:          return bottomLabelRaw
+            case .fixed:        return bottomLabelFixed
+            case .rawPlusFixed: return bottomLabelRawPlusFixed
+            case .rawTimes:     return bottomLabelRawTimes
+            }
+        }
+        
+        // Libellés des modes de grande suite (5 dés)
+        static let suiteModeSingleFixed = "Valeur unique"
+        static let suiteModeSplitFixed  = "Valeurs 1–5 / 2–6"
+        static func suiteModeLabel(_ mode: SuiteBigMode) -> String {
+            switch mode {
+            case .singleFixed: return suiteModeSingleFixed
+            case .splitFixed:  return suiteModeSplitFixed
+            }
+        }
+
     }
     
     enum Player {

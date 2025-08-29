@@ -48,9 +48,8 @@ struct NotationDetailView: View {
             
             Section(UIStrings.Notation.middleSection) {
                 Picker(UIStrings.Notation.rulePicker, selection: $notation.middleModeRaw) {
-                    ForEach(MiddleRuleMode.allCases) { m in
-                        Text(m.rawValue).tag(m.rawValue)
-                    }
+                    Text(UIStrings.Notation.middleLabel(.multiplier)).tag(MiddleRuleMode.multiplier.rawValue)
+                    Text(UIStrings.Notation.middleLabel(.bonusGate)).tag(MiddleRuleMode.bonusGate.rawValue)
                 }
                 Text(
                     StatsEngine.middleTooltip(
@@ -81,9 +80,8 @@ struct NotationDetailView: View {
                 // Grande suite (5 dés) — config dédiée
                 Section(UIStrings.Notation.bigSuite) {
                     Picker(UIStrings.Notation.modeLabel, selection: $notation.suiteBigModeRaw) {
-                        ForEach(SuiteBigMode.allCases) { m in
-                            Text(m.rawValue).tag(m.rawValue)
-                        }
+                        Text(UIStrings.Notation.suiteModeLabel(.singleFixed)).tag(SuiteBigMode.singleFixed.rawValue)
+                        Text(UIStrings.Notation.suiteModeLabel(.splitFixed)).tag(SuiteBigMode.splitFixed.rawValue)
                     }
 
                     if notation.suiteBigMode == .singleFixed {
@@ -161,41 +159,40 @@ struct FigureRuleRow: View {
                     set: { rule.mode = BottomRuleMode(rawValue: $0) ?? .raw }
                 )) {
                     ForEach(BottomRuleMode.allCases) { m in
-                        Text(m.rawValue).tag(m.rawValue)
+                        Text(UIStrings.Notation.bottomLabel(m)).tag(m.rawValue)
                     }
                 }
                 .pickerStyle(.menu)
             }
 
-            // raw -> rien
             if rule.mode == .fixed {
                 HStack {
-                    Text("Valeur fixe").font(.caption).foregroundStyle(.secondary)
+                    Text(UIStrings.Notation.valueFixed).font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     CompactWheelPicker(value: $rule.fixedValue,
                                        range: 0...200,
-                                       title: "Valeur fixe")
+                                       title: UIStrings.Notation.valueFixed)
                 }
             } else if rule.mode == .rawPlusFixed {
                 HStack {
-                    Text("Prime fixe").font(.caption).foregroundStyle(.secondary)
+                    Text(UIStrings.Notation.primeFixed).font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     CompactWheelPicker(value: $rule.fixedValue,
                                        range: 0...200,
-                                       title: "Prime fixe")
+                                       title: UIStrings.Notation.primeFixed)
                 }
             } else if rule.mode == .rawTimes {
                 HStack {
-                    Text("Multiplicateur").font(.caption).foregroundStyle(.secondary)
+                    Text(UIStrings.Notation.multiplier).font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     CompactWheelPicker(value: $rule.multiplier,
                                        range: 1...10,
-                                       title: "Multiplicateur",
+                                       title: UIStrings.Notation.multiplier,
                                        display: { "×\($0)" })
                 }
             }
 
-            TextField("Tooltip (optionnel)", text: Binding(
+            TextField(UIStrings.Notation.figureTooltipPlaceholder, text: Binding(
                 get: { rule.tooltip ?? "" },
                 set: { rule.tooltip = $0 }
             ))

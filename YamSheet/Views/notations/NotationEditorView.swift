@@ -49,9 +49,8 @@ struct NotationEditorView: View {
                 // Section milieu (tooltip non éditable + champs conditionnels)
                 Section(UIStrings.Notation.middleSection) {
                     Picker(UIStrings.Notation.rulePicker, selection: $local.middleModeRaw) {
-                        ForEach(MiddleRuleMode.allCases) { m in
-                            Text(m.rawValue).tag(m.rawValue)
-                        }
+                        Text(UIStrings.Notation.middleLabel(.multiplier)).tag(MiddleRuleMode.multiplier.rawValue)
+                        Text(UIStrings.Notation.middleLabel(.bonusGate)).tag(MiddleRuleMode.bonusGate.rawValue)
                     }
 
                     // Tooltip auto selon le mode choisi (non éditable)
@@ -76,10 +75,10 @@ struct NotationEditorView: View {
                 // Section basse — Grande suite (5 dés)
                 Section(UIStrings.Notation.bigSuite) {
                     Picker(UIStrings.Notation.modeLabel, selection: $local.suiteBigModeRaw) {
-                        ForEach(SuiteBigMode.allCases) { m in
-                            Text(m.rawValue).tag(m.rawValue)
-                        }
+                        Text(UIStrings.Notation.suiteModeLabel(.singleFixed)).tag(SuiteBigMode.singleFixed.rawValue)
+                        Text(UIStrings.Notation.suiteModeLabel(.splitFixed)).tag(SuiteBigMode.splitFixed.rawValue)
                     }
+
 
                     if local.suiteBigMode == .singleFixed {
                         HStack {
