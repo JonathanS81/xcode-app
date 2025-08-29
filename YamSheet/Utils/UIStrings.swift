@@ -33,6 +33,7 @@ enum UIStrings {
         static let wins    = "Victoires pouet"
         static let losses    = "Défaites pouet"
         static let identity    = "Identité pouet"
+        
      
     }
     
@@ -45,6 +46,12 @@ enum UIStrings {
         static let upperSection   = "Section haute pouet"
         static let middleSection  = "Section milieu pouet"
         static let bottomSection  = "Section basse pouet"
+        
+        //Totals
+        static let total1 = "Total 1"
+        static let total2 = "Total 2"
+        static let total3 = "Total 3"
+        static let totalAll = "Total général"
 
         // Header menu
         static let pause          = "Pause pouet"
