@@ -63,7 +63,12 @@ struct StatsEngine {
     static func bottomTotal(sc: Scorecard, game: Game, col: Int) -> Int {
         let n = game.notation
         let brelan = applyFigureRule(sc.brelan[col], rule: n.ruleBrelan)
-        let chance = applyFigureRule(sc.chance[col], rule: n.ruleChance)
+        
+       
+        let chance = game.enableChance
+            ? applyFigureRule(sc.chance[col], rule: n.ruleChance)
+            : 0
+        
         let full   = applyFigureRule(sc.full[col],   rule: n.ruleFull)
         let carre  = applyFigureRule(sc.carre[col],  rule: n.ruleCarre)
         let yamsBase = applyFigureRule(sc.yams[col], rule: n.ruleYams)
