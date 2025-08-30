@@ -10,6 +10,8 @@ import SwiftData
 struct NotationEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    
+    var onCreated: ((Notation) -> Void)? = nil
 
     @State private var local = Notation(
         name: "Classique",
@@ -144,8 +146,14 @@ struct NotationEditorView: View {
                     Button("Créer") {
                         context.insert(local)
                         try? context.save()
-                        dismiss()
+                        if let cb = onCreated {
+                            cb(local)           // remonte la notation au parent (NewGameView)
+                            // on ne dismiss pas ici : NewGameView fermera la sheet
+                        } else {
+                            dismiss()           // cas d'usage en autonome
+                        }
                     }
+                    .disabled(local.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }

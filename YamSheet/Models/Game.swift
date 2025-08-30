@@ -11,6 +11,14 @@ final class Game: Identifiable {
     var enableSmallStraight: Bool
     var smallStraightScore: Int
     
+    // Nom lisible de la partie
+    var name: String = ""
+
+
+    // Options de figures (par partie)
+    var enableChance: Bool = true
+    // (tu as déjà enableSmallStraight d’après GameDetailView)
+    
     // Notation figée (snapshot JSON)
     var notationData: Data
     
@@ -93,3 +101,26 @@ final class Game: Identifiable {
     }
 }
 
+import Foundation
+
+extension Game {
+    /// Applique les options de création et fige la notation pour la partie
+    func applyCreationOptions(
+        name: String,
+        enableChance: Bool,
+        enableSmallStraight: Bool,
+        notation: Notation
+    ) {
+        self.name = name
+        self.enableChance = enableChance
+        self.enableSmallStraight = enableSmallStraight
+
+        // On fige la notation (snapshot) dans la partie
+        let snap = notation.snapshot()
+        if let data = try? JSONEncoder().encode(snap) {
+            self.notationData = data
+        } else {
+            self.notationData = Data()
+        }
+    }
+}

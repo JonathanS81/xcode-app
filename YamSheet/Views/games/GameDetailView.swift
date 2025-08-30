@@ -3,6 +3,7 @@ import SwiftData
 
 struct GameDetailView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
     @Query private var allPlayers: [Player]
 
     @State private var activeCol: Int = 0            // index du joueur sélectionné
@@ -30,6 +31,7 @@ struct GameDetailView: View {
         .navigationTitle(UIStrings.Game.title)
         .toolbar {
             Menu {
+                
                 Button(game.status == .paused ? UIStrings.Game.resume : UIStrings.Game.pause) {
                     game.status = game.status == .paused ? .inProgress : .paused
                     try? context.save()
@@ -287,7 +289,11 @@ struct GameDetailView: View {
         VStack(spacing: 8) {
             sectionTitle(UIStrings.Game.bottomSection)
             numericRow(label: UIStrings.Game.brelan, keyPath: \Scorecard.brelan, figure: .brelan)
-            numericRow(label: UIStrings.Game.chance, keyPath: \Scorecard.chance, figure: .chance)
+            
+            if game.enableChance {
+                numericRow(label: UIStrings.Game.chance, keyPath: \Scorecard.chance, figure: .chance)
+            }
+            
             numericRow(label: UIStrings.Game.full,   keyPath: \Scorecard.full,   figure: .full)
 
             // Suite (grande) : valeurs -1,0,15,20 (— / barré / 1–5 / 2–6)
