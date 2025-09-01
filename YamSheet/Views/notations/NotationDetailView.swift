@@ -9,8 +9,10 @@ import SwiftUI
 import SwiftData
 
 struct NotationDetailView: View {
+    
+ 
     @Environment(\.modelContext) private var context
-    @Bindable var notation: Notation
+    @Bindable var notation: Notation // ← IMPORTANT
     @State private var showSaved = false
     
     var body: some View {
@@ -120,12 +122,26 @@ struct NotationDetailView: View {
                 
                 FigureRuleRow(title: "Carré", rule: $notation.ruleCarre)
                 FigureRuleRow(title: "Yams", rule: $notation.ruleYams)
-                Toggle("Prime Yams supplémentaire", isOn: $notation.extraYamsBonusEnabled)
-                Stepper("Bonus Yams +\(notation.extraYamsBonusValue)", value: $notation.extraYamsBonusValue, in: 0...200)
-                    .disabled(!notation.extraYamsBonusEnabled)
-                if let tip = notation.tooltipBottom, !tip.isEmpty {
-                    Text(tip).font(.footnote).foregroundStyle(.secondary)
+
+                Section("Prime Yams supplémentaire") {
+                    HStack {
+                        Text("Montant")
+                        Spacer()
+                        TextField("0", value: $notation.extraYamsBonusValue, format: .number)
+                            .keyboardType(.numberPad)
+                            .frame(width: 80)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    Text("Astuce : mettre 0 pour désactiver la prime dans la notation. L’activation finale se fait lors de la création d’une partie.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
+                .onChange(of: notation.extraYamsBonusValue) { oldVal, newVal in
+                    notation.extraYamsBonusEnabled = newVal > 0
+                    try? context.save()
+                }
+
+                
             }
         }
         .navigationTitle(notation.name)

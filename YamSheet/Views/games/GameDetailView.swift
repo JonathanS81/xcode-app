@@ -9,12 +9,27 @@ struct GameDetailView: View {
     @State private var activeCol: Int = 0            // index du joueur sélectionné
     @State private var showTip = false
     @State private var tipText = ""
+    
+    @State private var showRevokeYams = false
+    @State private var revokePlayerIdx: Int? = nil
+
+  
 
     @Bindable var game: Game
 
     // Unique colonne de score dans chaque Scorecard (si tu ajoutes plusieurs colonnes plus tard, remplace par un @State)
     private var scoreColumnIndex: Int { 0 }
 
+    // Retirer un prime Yams Extra
+    private func revokeExtraYams(for playerIdx: Int) {
+        var arr = game.scorecards[playerIdx].extraYamsAwarded
+        if scoreColumnIndex < arr.count && scoreColumnIndex >= 0 {
+            arr[scoreColumnIndex] = false
+            game.scorecards[playerIdx].extraYamsAwarded = arr
+            try? context.save()
+        }
+    }
+    
     // MARK: - Body
     var body: some View {
         let players = game.scorecards.compactMap { sc in
@@ -47,6 +62,18 @@ struct GameDetailView: View {
         .alert(UIStrings.Game.tooltipTitle, isPresented: $showTip, actions: {
             Button(UIStrings.Common.ok, role: .cancel) { }
         }, message: { Text(tipText) })
+        
+        .confirmationDialog(
+            "Annuler la prime Yams supplémentaire ?",
+            isPresented: $showRevokeYams,
+            titleVisibility: .visible
+        ) {
+            Button("Annuler la prime", role: .destructive) {
+                if let idx = revokePlayerIdx { revokeExtraYams(for: idx) }
+                revokePlayerIdx = nil
+            }
+            Button("Conserver", role: .cancel) { revokePlayerIdx = nil }
+        }
     }
 
     // MARK: - Header
@@ -95,7 +122,7 @@ struct GameDetailView: View {
             sectionMiddle()
             sectionBottom()
             // Total général
-            totalsRow(label: UIStrings.Game.totalAll, valueForPlayer: totalAllText)
+          totalsRow(label: UIStrings.Game.totalAll, valueForPlayer: totalAllText)
                 .padding(.top, 6)
         }
     }
@@ -135,6 +162,17 @@ struct GameDetailView: View {
             }
         )
     }
+    
+    private func yamsAlreadyScored(_ sc: Scorecard, col: Int) -> Bool {
+        guard sc.yams.indices.contains(col) else { return false }
+        let v = sc.yams[col]
+        return v > 0    // ni -1 (“—”), ni 0
+    }
+
+    private var extraYamsIsEnabled: Bool {
+        game.enableExtraYamsBonus && game.notation.extraYamsBonusEnabled
+    }
+    
 
     // MARK: - Rows (Section haute / milieu / basse)
 
@@ -181,7 +219,9 @@ struct GameDetailView: View {
     // Entrée numérique (section milieu ou certaines figures), avec tooltip optionnel
     private func numericRow(label: String,
                             keyPath: WritableKeyPath<Scorecard, [Int]>,
-                            figure: FigureKind? = nil) -> some View {
+                            figure: FigureKind? = nil,
+                            validator: ((Int?) -> Int)? = nil,
+                            displayMap: ((Int) -> String)? = nil) -> some View {
         HStack {
             if let fig = figure {
                 labelWithTip(label, figure: fig)
@@ -192,17 +232,39 @@ struct GameDetailView: View {
                 let scBinding = $game.scorecards[playerIdx]
                 let isLocked  = scBinding.wrappedValue.isLocked(col: scoreColumnIndex, key: label)
                 let binding   = valueBinding(scBinding, keyPath, scoreColumnIndex)
+                let value     = binding.wrappedValue
 
                 TextField(UIStrings.Common.dash, value: Binding(
-                    get: { binding.wrappedValue == -1 ? nil : binding.wrappedValue },
-                    set: { newVal in binding.wrappedValue = newVal ?? -1 }
+                    get: { value == -1 ? nil : value },
+                    set: { newVal in
+                        if let v = validator {
+                            binding.wrappedValue = v(newVal)
+                        } else {
+                            binding.wrappedValue = newVal ?? -1
+                        }
+                    }
                 ), format: .number)
                 .keyboardType(.numberPad)
                 .padding(8)
                 .frame(maxWidth: .infinity)
-                .background(cellBackground(col: playerIdx, isOpen: binding.wrappedValue == -1))
+                .background(cellBackground(col: playerIdx, isOpen: value == -1))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .disabled(isLocked || playerIdx != activeCol)
+                .overlay(alignment: .trailing) {
+                    // Affichage "effectif" pour les modes fixed / rawPlusFixed / rawTimes
+                    if let map = displayMap, value >= 0 {
+                        let eff = map(value)
+                        // On n’affiche la surimpression que si elle diffère de la saisie brute
+                        if eff != String(value) {
+                            Text(eff)
+                                .font(.caption2)
+                                .padding(.trailing, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.black.opacity(0.06))
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
                 .contextMenu {
                     Button(UIStrings.Common.validate) {
                         scBinding.wrappedValue.setLocked(true, col: scoreColumnIndex, key: label)
@@ -213,6 +275,7 @@ struct GameDetailView: View {
             }
         }
     }
+
 
     // Sélecteurs personnalisés (Suite / Petite suite) avec mapping d’affichage
     private func pickerRowCustom(label: String,
@@ -256,6 +319,88 @@ struct GameDetailView: View {
             }
         }
     }
+    
+    // ExtraYams
+    @ViewBuilder
+    private func extraYamsRow() -> some View {
+        if extraYamsIsEnabled {
+            HStack {
+                Text("Prime Yams supplémentaire").frame(width: 110, alignment: .leading)
+
+                ForEach(game.scorecards.indices, id: \.self) { playerIdx in
+                    let scBinding = $game.scorecards[playerIdx]
+                    let awarded = scBinding.wrappedValue.extraYamsAwarded[scoreColumnIndex]
+                    let eligible = yamsAlreadyScored(scBinding.wrappedValue, col: scoreColumnIndex)
+                    let isActivePlayer = (playerIdx == activeCol)
+
+                    Group {
+                        if awarded {
+                            // Affichage : coche + valeur + bouton Annuler (pour le joueur actif)
+                            HStack(spacing: 8) {
+                                Image(systemName: "checkmark.seal.fill")
+                                Text("+\(game.notation.extraYamsBonusValue)")
+                                Spacer()
+                                if isActivePlayer {
+                                    Button(role: .destructive) {
+                                        revokePlayerIdx = playerIdx
+                                        showRevokeYams = true
+                                    } label: {
+                                        Label("Annuler", systemImage: "xmark.circle")
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(8)
+                            .background(cellBackground(col: playerIdx, isOpen: false))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .contextMenu {
+                                Button("Retirer la prime", role: .destructive) {
+                                    revokeExtraYams(for: playerIdx)
+                                }
+                            }
+                        }
+
+                        else {
+                            if eligible && isActivePlayer {
+                                Button {
+                                    var arr = scBinding.wrappedValue.extraYamsAwarded
+                                    arr[scoreColumnIndex] = true
+                                    scBinding.wrappedValue.extraYamsAwarded = arr
+                                    scBinding.wrappedValue.setLocked(true, col: scoreColumnIndex, key: "ExtraYamsBonus")
+                                    try? context.save()
+                                } label: {
+                                    Text("Attribuer")
+                                        .frame(maxWidth: .infinity)
+                                        .padding(8)
+                                        .background(cellBackground(col: playerIdx, isOpen: true))
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                }
+                                .contextMenu {
+                                    Button("Conditions") {
+                                        tipText = "Prime accordée uniquement si le Yams est déjà validé (≠ 0 et ≠ —)."
+                                        showTip = true
+                                    }
+                                }
+                            } else {
+                                Text(UIStrings.Common.dash)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(8)
+                                    .background(cellBackground(col: playerIdx, isOpen: true))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .help("La prime n’est attribuable qu’après avoir validé la case Yams.")
+                            }
+                        }
+                    }
+                    .disabled(!isActivePlayer)
+                }
+            }
+        } else {
+            EmptyView()
+        }
+    }
+
+    
 
     // MARK: - Sections
 
@@ -277,25 +422,82 @@ struct GameDetailView: View {
     private func sectionMiddle() -> some View {
         VStack(spacing: 8) {
             sectionTitle(UIStrings.Game.middleSection)
-            numericRow(label: UIStrings.Game.max, keyPath: \Scorecard.maxVals)
-            numericRow(label: UIStrings.Game.min, keyPath: \Scorecard.minVals)
+            //numericRow(label: UIStrings.Game.max, keyPath: \Scorecard.maxVals)
+            //numericRow(label: UIStrings.Game.min, keyPath: \Scorecard.minVals)
 
+            let strict = (game.notation.middleMode == .bonusGate)
+
+            // MAX
+            numericRow(label: UIStrings.Game.max,
+                       keyPath: \Scorecard.maxVals,
+                       validator: { newVal in
+                           let currentMin = game.scorecards[activeCol].minVals[scoreColumnIndex]
+                           return ValidationEngine.sanitizeMiddleMax(newVal,
+                                                                     currentMin: (currentMin >= 0 ? currentMin : nil),
+                                                                     strictGreater: strict)
+                       })
+
+            // MIN
+            numericRow(label: UIStrings.Game.min,
+                       keyPath: \Scorecard.minVals,
+                       validator: { newVal in
+                           let currentMax = game.scorecards[activeCol].maxVals[scoreColumnIndex]
+                           return ValidationEngine.sanitizeMiddleMin(newVal,
+                                                                     currentMax: (currentMax >= 0 ? currentMax : nil),
+                                                                     strictGreater: strict)
+                       })
+            
+            
             // Total 2 (milieu)
             totalsRow(label: UIStrings.Game.total2, valueForPlayer: total2Text)
+            
+            
         }
     }
 
     private func sectionBottom() -> some View {
         VStack(spacing: 8) {
             sectionTitle(UIStrings.Game.bottomSection)
-            numericRow(label: UIStrings.Game.brelan, keyPath: \Scorecard.brelan, figure: .brelan)
+            //numericRow(label: UIStrings.Game.brelan, keyPath: \Scorecard.brelan, figure: .brelan)
+            
+            numericRow(label: UIStrings.Game.brelan,
+                       keyPath: \Scorecard.brelan,
+                       figure: .brelan,
+                       validator: { newVal in
+                           ValidationEngine.sanitizeBottom(newVal, rule: game.notation.ruleBrelan)
+                       },
+                       displayMap: { v in
+                           ValidationEngine.displayForBottom(stored: v, rule: game.notation.ruleBrelan)
+                       })
+            
             
             if game.enableChance {
-                numericRow(label: UIStrings.Game.chance, keyPath: \Scorecard.chance, figure: .chance)
+                //numericRow(label: UIStrings.Game.chance, keyPath: \Scorecard.chance, figure: .chance)
+                
+                numericRow(label: UIStrings.Game.chance,
+                           keyPath: \Scorecard.chance,
+                           figure: .chance,
+                           validator: { newVal in
+                               ValidationEngine.sanitizeBottom(newVal, rule: game.notation.ruleChance)
+                           },
+                           displayMap: { v in
+                               ValidationEngine.displayForBottom(stored: v, rule: game.notation.ruleChance)
+                           })
+                
             }
             
-            numericRow(label: UIStrings.Game.full,   keyPath: \Scorecard.full,   figure: .full)
-
+            //numericRow(label: UIStrings.Game.full,   keyPath: \Scorecard.full,   figure: .full)
+            numericRow(label: UIStrings.Game.full,
+                       keyPath: \Scorecard.full,
+                       figure: .full,
+                       validator: { newVal in
+                           ValidationEngine.sanitizeBottom(newVal, rule: game.notation.ruleFull)
+                       },
+                       displayMap: { v in
+                           ValidationEngine.displayForBottom(stored: v, rule: game.notation.ruleFull)
+                       })
+            
+            
             // Suite (grande) : valeurs -1,0,15,20 (— / barré / 1–5 / 2–6)
             pickerRowCustom(label: UIStrings.Game.suite,
                             allowedValues: [0, 15, 20],
@@ -312,9 +514,33 @@ struct GameDetailView: View {
                                 valueToText: displayPetiteSuiteValue)
             }
 
-            numericRow(label: UIStrings.Game.carre,  keyPath: \Scorecard.carre, figure: .carre)
-            numericRow(label: UIStrings.Game.yams,   keyPath: \Scorecard.yams,  figure: .yams)
-
+           // numericRow(label: UIStrings.Game.carre,  keyPath: \Scorecard.carre, figure: .carre)
+            numericRow(label: UIStrings.Game.carre,
+                       keyPath: \Scorecard.carre,
+                       figure: .carre,
+                       validator: { newVal in
+                           ValidationEngine.sanitizeBottom(newVal, rule: game.notation.ruleCarre)
+                       },
+                       displayMap: { v in
+                           ValidationEngine.displayForBottom(stored: v, rule: game.notation.ruleCarre)
+                       })
+            
+            
+           // numericRow(label: UIStrings.Game.yams,   keyPath: \Scorecard.yams,  figure: .yams)
+            
+            numericRow(label: UIStrings.Game.yams,
+                       keyPath: \Scorecard.yams,
+                       figure: .yams,
+                       validator: { newVal in
+                           ValidationEngine.sanitizeBottom(newVal, rule: game.notation.ruleYams)
+                       },
+                       displayMap: { v in
+                           ValidationEngine.displayForBottom(stored: v, rule: game.notation.ruleYams)
+                       })
+            
+            
+            extraYamsRow()
+            
             // Total 3 (bas)
             totalsRow(label: UIStrings.Game.total3, valueForPlayer: total3Text)
         }
@@ -359,9 +585,13 @@ struct GameDetailView: View {
     }
 
     private func totalAllText(playerIdx: Int) -> String {
-        guard middleCanCompute(playerIdx: playerIdx) else { return UIStrings.Common.dash }
         let sc = game.scorecards[playerIdx]
-        return String(StatsEngine.total(sc: sc, game: game, col: scoreColumnIndex))
+        let upper = StatsEngine.upperTotal(sc: sc, game: game, col: scoreColumnIndex)
+        let bottom = StatsEngine.bottomTotal(sc: sc, game: game, col: scoreColumnIndex)
+        let middle = middleCanCompute(playerIdx: playerIdx)
+            ? StatsEngine.middleTotal(sc: sc, game: game, col: scoreColumnIndex)
+            : 0
+        return String(upper + middle + bottom)
     }
 
     // Ligne de totaux homogène

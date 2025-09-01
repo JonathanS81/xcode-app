@@ -21,6 +21,9 @@ struct NewGameView: View {
     @State private var selectedPlayerIDs: Set<Player.ID> = []
     @State private var selectedNotationID: Notation.ID? = nil
 
+    //Prime Xtra Yams
+    @State private var enableExtraYamsBonus: Bool = true
+    
     // Options
     @State private var enableChance: Bool = true
     @State private var enableSmallStraight: Bool = true
@@ -102,6 +105,7 @@ struct NewGameView: View {
                 Section("Options") {
                     Toggle("Inclure Chance", isOn: $enableChance)
                     Toggle("Activer Petite suite", isOn: $enableSmallStraight)
+                    Toggle("Activer Prime Yams supplémentaire", isOn: $enableExtraYamsBonus)
                     TextField("Commentaire", text: $comment)
                 }
 
@@ -189,6 +193,7 @@ struct NewGameView: View {
         game.name = nameToUse
         game.enableChance = enableChance
         game.enableSmallStraight = enableSmallStraight
+        game.enableExtraYamsBonus = enableExtraYamsBonus   // Prime Yams supplémentaire
 
         // Scorecards pour chaque joueur
         for p in chosenPlayers {
