@@ -30,6 +30,97 @@ struct GameDetailView: View {
         }
     }
     
+
+    // Un champ numérique robuste : saisie String, pas de réécriture pendant la frappe.
+    // Validation "forte" (clamp + règles) à la fin de l'édition (Done/Enter/tap dehors).
+    private struct NumericCell: View {
+        @Binding var value: Int            // -1 = vide, sinon nombre
+        let isLocked: Bool
+        let isActive: Bool
+        let validator: ((Int?) -> Int)?
+        let displayMap: ((Int) -> String)?
+        let valueFont: Font?
+        let effectiveFont: Font?
+
+        @State private var text: String = ""
+        @FocusState private var isFocused: Bool
+
+        var body: some View {
+            ZStack(alignment: .trailing) {
+                TextField(UIStrings.Common.dash, text: $text)
+                    .keyboardType(.numberPad)
+                    .submitLabel(.done)              // ← “Done/Terminé” sur le clavier
+                    .onSubmit {                      // ← Enter/Done ferme + valide
+                        commit()
+                    }
+                
+                    .font(valueFont)
+                    .focused($isFocused)
+                    .onAppear {
+                        text = (value >= 0) ? String(value) : ""
+                    }
+                    // Ne pas réécrire le texte pendant la frappe (seulement si pas focus)
+                    .onChange(of: value) { oldVal, newVal in
+                        if !isFocused {
+                            let t = (newVal >= 0) ? String(newVal) : ""
+                            if t != text { text = t }
+                        }
+                    }
+                    .onChange(of: text) { oldText, newText in
+                        // 1) ne garder que les chiffres
+                        let filtered = newText.filter { $0.isNumber }
+                        if filtered != newText { text = filtered; return }
+                        // 2) convertir
+                        let intVal = Int(filtered)
+
+                        if isFocused {
+                            // Saisie libre mais bornée "douce" pour éviter les dérapages
+                            let soft = intVal.map { max(0, min(99, $0)) }
+                            if soft != value { value = soft ?? -1 }
+                        } else {
+                            // Si pas focus (synchro externe), applique validation forte
+                            applyValidation(intVal)
+                        }
+                    }
+                    // Perte/gain de focus : au blur, on valide fort & on normalise le texte
+                    .onChange(of: isFocused) { wasFocused, nowFocused in
+                        if wasFocused && !nowFocused { commit() }
+                    }
+                 
+                   
+
+                // Overlay “valeur effective” (rawPlusFixed / rawTimes / fixed)
+                if let map = displayMap, value >= 0 {
+                    let eff = map(value)
+                    if eff != String(value) {
+                        Text(eff)
+                            .font(effectiveFont ?? .caption2)
+                            .padding(.trailing, 8)
+                            .padding(.vertical, 2)
+                            .background(Color.black.opacity(0.06))
+                            .clipShape(Capsule())
+                    }
+                }
+            }
+            .disabled(isLocked || !isActive)
+        }
+
+        private func commit() {
+            isFocused = false
+            let intVal = Int(text)
+            applyValidation(intVal)
+            // normaliser l'affichage
+            text = (value >= 0) ? String(value) : ""
+        }
+
+        private func applyValidation(_ intVal: Int?) {
+            let sanitized = validator?(intVal) ?? (intVal ?? -1)
+            if sanitized != value { value = sanitized }
+        }
+    }
+
+    
+    
     // MARK: - Body
     var body: some View {
         let players = game.scorecards.compactMap { sc in
@@ -43,20 +134,32 @@ struct GameDetailView: View {
             }
             .padding(.horizontal)
         }
+        .scrollDismissesKeyboard(.interactively)       // ← iOS 16+: fait glisser le clavier
+        .simultaneousGesture(TapGesture().onEnded {     // ← tap dans le scroll = fermer
+            hideKeyboard()
+        })
+
         .navigationTitle(UIStrings.Game.title)
         .toolbar {
-            Menu {
-                
-                Button(game.status == .paused ? UIStrings.Game.resume : UIStrings.Game.pause) {
-                    game.status = game.status == .paused ? .inProgress : .paused
-                    try? context.save()
+            // Menu pause / terminer
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Menu {
+                    Button(game.status == .paused ? UIStrings.Game.resume : UIStrings.Game.pause) {
+                        game.status = game.status == .paused ? .inProgress : .paused
+                        try? context.save()
+                    }
+                    Button(UIStrings.Game.finish) {
+                        game.status = .completed
+                        try? context.save()
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
                 }
-                Button(UIStrings.Game.finish) {
-                    game.status = .completed
-                    try? context.save()
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
+            }
+            // Bouton Terminé unique (clavier)
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Terminé") { hideKeyboard() }
             }
         }
         .alert(UIStrings.Game.tooltipTitle, isPresented: $showTip, actions: {
@@ -88,7 +191,9 @@ struct GameDetailView: View {
                         .background(idx == activeCol ? Color.green.opacity(0.2) : Color.clear)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .onTapGesture { activeCol = idx }
+                  
                 }
+
             }
             .padding(.vertical, 8)
         }
@@ -170,7 +275,7 @@ struct GameDetailView: View {
     }
 
     private var extraYamsIsEnabled: Bool {
-        game.enableExtraYamsBonus && game.notation.extraYamsBonusEnabled
+        game.enableExtraYamsBonus && game.notation.extraYamsBonusValue > 0
     }
     
 
@@ -221,50 +326,33 @@ struct GameDetailView: View {
                             keyPath: WritableKeyPath<Scorecard, [Int]>,
                             figure: FigureKind? = nil,
                             validator: ((Int?) -> Int)? = nil,
-                            displayMap: ((Int) -> String)? = nil) -> some View {
+                            displayMap: ((Int) -> String)? = nil,
+                            valueFont: Font? = nil,
+                            effectiveFont: Font? = nil) -> some View {
         HStack {
             if let fig = figure {
                 labelWithTip(label, figure: fig)
             } else {
                 Text(label).frame(width: 110, alignment: .leading)
             }
+
             ForEach(game.scorecards.indices, id: \.self) { playerIdx in
                 let scBinding = $game.scorecards[playerIdx]
                 let isLocked  = scBinding.wrappedValue.isLocked(col: scoreColumnIndex, key: label)
                 let binding   = valueBinding(scBinding, keyPath, scoreColumnIndex)
-                let value     = binding.wrappedValue
+                let isOpen    = (binding.wrappedValue == -1)
 
-                TextField(UIStrings.Common.dash, value: Binding(
-                    get: { value == -1 ? nil : value },
-                    set: { newVal in
-                        if let v = validator {
-                            binding.wrappedValue = v(newVal)
-                        } else {
-                            binding.wrappedValue = newVal ?? -1
-                        }
-                    }
-                ), format: .number)
-                .keyboardType(.numberPad)
+                NumericCell(value: binding,
+                            isLocked: isLocked,
+                            isActive: playerIdx == activeCol,
+                            validator: validator,
+                            displayMap: displayMap,
+                            valueFont: valueFont,
+                            effectiveFont: effectiveFont)
                 .padding(8)
                 .frame(maxWidth: .infinity)
-                .background(cellBackground(col: playerIdx, isOpen: value == -1))
+                .background(cellBackground(col: playerIdx, isOpen: isOpen))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
-                .disabled(isLocked || playerIdx != activeCol)
-                .overlay(alignment: .trailing) {
-                    // Affichage "effectif" pour les modes fixed / rawPlusFixed / rawTimes
-                    if let map = displayMap, value >= 0 {
-                        let eff = map(value)
-                        // On n’affiche la surimpression que si elle diffère de la saisie brute
-                        if eff != String(value) {
-                            Text(eff)
-                                .font(.caption2)
-                                .padding(.trailing, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.black.opacity(0.06))
-                                .clipShape(Capsule())
-                        }
-                    }
-                }
                 .contextMenu {
                     Button(UIStrings.Common.validate) {
                         scBinding.wrappedValue.setLocked(true, col: scoreColumnIndex, key: label)
@@ -272,6 +360,7 @@ struct GameDetailView: View {
                     }
                     Button(UIStrings.Common.clear) { binding.wrappedValue = -1 }
                 }
+                .disabled(isLocked || playerIdx != activeCol)
             }
         }
     }
@@ -365,6 +454,10 @@ struct GameDetailView: View {
                             if eligible && isActivePlayer {
                                 Button {
                                     var arr = scBinding.wrappedValue.extraYamsAwarded
+                                    // sécuriser la taille du tableau
+                                    if scoreColumnIndex >= arr.count {
+                                        arr.append(contentsOf: Array(repeating: false, count: scoreColumnIndex - arr.count + 1))
+                                    }
                                     arr[scoreColumnIndex] = true
                                     scBinding.wrappedValue.extraYamsAwarded = arr
                                     scBinding.wrappedValue.setLocked(true, col: scoreColumnIndex, key: "ExtraYamsBonus")
@@ -400,9 +493,23 @@ struct GameDetailView: View {
         }
     }
 
-    
+    // Yams : 0 ou {5,10,15,20,25,30}; en mode fixed -> force la valeur fixe définie dans le snapshot
+    private func sanitizeYamsForSnapshot(_ newVal: Int?) -> Int {
+        guard let v = newVal else { return -1 }
+        if v == 0 { return 0 }
+        let bases: Set<Int> = [5, 10, 15, 20, 25, 30]
+        let rule = game.notation.ruleYams
+        switch rule.mode {
+        case .fixed:
+            return rule.fixedValue
+        default:
+            return bases.contains(v) ? v : -1
+        }
+    }
 
     // MARK: - Sections
+    
+    
 
     private func sectionUpper() -> some View {
         VStack(spacing: 8) {
@@ -532,11 +639,13 @@ struct GameDetailView: View {
                        keyPath: \Scorecard.yams,
                        figure: .yams,
                        validator: { newVal in
-                           ValidationEngine.sanitizeBottom(newVal, rule: game.notation.ruleYams)
+                           sanitizeYamsForSnapshot(newVal)   // ← wrapper pour NotationSnapshot
                        },
                        displayMap: { v in
                            ValidationEngine.displayForBottom(stored: v, rule: game.notation.ruleYams)
-                       })
+                       },
+                       valueFont: .caption,                         // saisie base en petit
+                       effectiveFont: .headline)      // valeur effective en gros
             
             
             extraYamsRow()
