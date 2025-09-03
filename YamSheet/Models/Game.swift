@@ -14,6 +14,8 @@ final class Game: Identifiable {
     // Nom lisible de la partie
     var name: String = ""
 
+    //Prime Extra Yams
+    var enableExtraYamsBonus: Bool = true
 
     // Options de figures (par partie)
     var enableChance: Bool = true

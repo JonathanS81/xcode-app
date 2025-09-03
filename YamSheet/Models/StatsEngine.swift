@@ -5,8 +5,22 @@ enum FigureKind {
 }
 
 struct StatsEngine {
+    //helper
+    static func extraYamsBonusAmount(sc: Scorecard, game: Game, col: Int) -> Int {
+        guard game.enableExtraYamsBonus,                        // partie
+              game.notation.extraYamsBonusValue > 0,            // notation (0 = off)
+              sc.extraYamsAwarded.indices.contains(col),
+              sc.extraYamsAwarded[col] else {
+            return 0
+        }
+        return game.notation.extraYamsBonusValue
+    }
+    
+    
     // -1 => non rempli ; 0 => barré ; sinon valeur
     static func norm(_ v: Int) -> Int { max(0, v) }
+    
+    
 
     // MARK: - Upper
     static func upperTotal(sc: Scorecard, game: Game, col: Int) -> Int {
@@ -62,24 +76,24 @@ struct StatsEngine {
 
     static func bottomTotal(sc: Scorecard, game: Game, col: Int) -> Int {
         let n = game.notation
-        let brelan = applyFigureRule(sc.brelan[col], rule: n.ruleBrelan)
-        
-       
-        let chance = game.enableChance
-            ? applyFigureRule(sc.chance[col], rule: n.ruleChance)
-            : 0
-        
-        let full   = applyFigureRule(sc.full[col],   rule: n.ruleFull)
-        let carre  = applyFigureRule(sc.carre[col],  rule: n.ruleCarre)
-        let yamsBase = applyFigureRule(sc.yams[col], rule: n.ruleYams)
 
-        // Grande suite via config dédiée
-        let suite = suiteBigScore(raw: sc.suite[col], n: n)
-        // Petite suite via sa FigureRule (fixed recommandé)
-        let petiteSuite = applyFigureRule(sc.petiteSuite[col], rule: n.rulePetiteSuite)
+        let brelan       = applyFigureRule(sc.brelan[col],       rule: n.ruleBrelan)
+        let chance       = game.enableChance
+                            ? applyFigureRule(sc.chance[col],    rule: n.ruleChance)
+                            : 0
+        let full         = applyFigureRule(sc.full[col],         rule: n.ruleFull)
+        let suite        = applyFigureRule(sc.suite[col],        rule: n.ruleSuite)
+        let petiteSuite  = game.enableSmallStraight
+                            ? applyFigureRule(sc.petiteSuite[col], rule: n.rulePetiteSuite)
+                            : 0
+        let carre        = applyFigureRule(sc.carre[col],        rule: n.ruleCarre)
+        let yams         = applyFigureRule(sc.yams[col],         rule: n.ruleYams)
 
-        let yamsBonus = (n.extraYamsBonusEnabled && norm(sc.yams[col]) > 0) ? n.extraYamsBonusValue : 0
-        return brelan + chance + full + carre + yamsBase + suite + petiteSuite + yamsBonus
+        // >>> prime centralisée ici, UNE SEULE FOIS
+        let extra        = extraYamsBonusAmount(sc: sc, game: game, col: col)
+
+        return brelan + chance + full + suite + petiteSuite + carre + yams + extra
+        
     }
 
     static func total(sc: Scorecard, game: Game, col: Int) -> Int {

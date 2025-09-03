@@ -117,17 +117,22 @@ struct NotationEditorView: View {
                     FigureRuleRow(title: "Carré",        rule: $local.ruleCarre)
                     FigureRuleRow(title: "Yams",         rule: $local.ruleYams)
 
-                    Toggle(UIStrings.Notation.extraYamsOn, isOn: $local.extraYamsBonusEnabled)
-                    HStack {
-                        Text(UIStrings.Notation.extraYams).font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                        CompactWheelPicker(value: $local.extraYamsBonusValue,
-                                           range: 0...200,
-                                           title: UIStrings.Notation.extraYams)
-                            .opacity(local.extraYamsBonusEnabled ? 1 : 0.5)
-                            .allowsHitTesting(local.extraYamsBonusEnabled)
+                    Section("Prime Yams supplémentaire") {
+                        HStack {
+                            Text("Montant")
+                            Spacer()
+                            TextField("0", value: $local.extraYamsBonusValue, format: .number)
+                                .keyboardType(.numberPad)
+                                .frame(width: 80)
+                                .multilineTextAlignment(.trailing)
+                        }
+                        Text("Astuce : mettre 0 pour désactiver cette prime dans la notation. L’activation finale se fait à la création d’une partie.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
-                }
+                    .onChange(of: local.extraYamsBonusValue) { oldVal, newVal in
+                        local.extraYamsBonusEnabled = newVal > 0
+                    }                }
 
                 // Tooltip bas (affichage)
                 if let tip = local.tooltipBottom, !tip.isEmpty {

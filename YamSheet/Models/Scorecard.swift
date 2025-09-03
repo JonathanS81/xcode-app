@@ -14,6 +14,7 @@ final class Scorecard: Identifiable {
     var id: UUID
     var playerID: UUID
     var columns: Int
+    var extraYamsAwarded: [Bool] = []
 
     @Relationship(deleteRule: .nullify, inverse: \Game.scorecards) var game: Game?
 
@@ -63,6 +64,7 @@ final class Scorecard: Identifiable {
         
         self.suiteData = initArray()
         self.petiteSuiteData = initArray()
+        self.extraYamsAwarded = Array(repeating: false, count: columns)
 
         self.locksData = encodeJSON([String: Bool]())
     }

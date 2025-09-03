@@ -4,15 +4,15 @@ import SwiftData
 struct SampleData {
     static func ensureSamples(_ context: ModelContext) {
         let playersCount = (try? context.fetch(FetchDescriptor<Player>()))?.count ?? 0
-        if playersCount == 0 {
-            context.insert(Player(name: "Alice Dupont", nickname: "Ali"))
-            context.insert(Player(name: "Bruno Martin", nickname: "Bru"))
-            context.insert(Player(name: "Chloé Petit", nickname: "Clo"))
-            try? context.save()
-        }
+        //if playersCount == 0 {
+            //context.insert(Player(name: "Alice Dupont", nickname: "Ali"))
+            //context.insert(Player(name: "Bruno Martin", nickname: "Bru"))
+            //context.insert(Player(name: "Chloé Petit", nickname: "Clo"))
+            //try? context.save()
+        //}
         
         let notationsCount = (try? context.fetch(FetchDescriptor<Notation>()))?.count ?? 0
-        if notationsCount == 0 {
+        /*if notationsCount == 0 {
             let classic = Notation(
                 name: "Classique",
                 tooltipUpper: "Atteindre 63 points en haut donne un bonus.",
@@ -35,7 +35,7 @@ struct SampleData {
             )
             context.insert(classic)
             try? context.save()
-        }
+        }*/
 
     }
 }
