@@ -18,23 +18,27 @@ struct EndGameCongratsView: View {
     let entries: [Entry]
     let dismiss: () -> Void
 
-    // Detecte tous les .json présents dans le sous-dossier Resources (folder bleu)
-    private var animationNames: [String] {
-        let paths = Bundle.main.paths(forResourcesOfType: "json", inDirectory: "Resources")
-        // Garde uniquement les fichiers Lottie “célébration” si tu veux (ex: par préfixe)
-        // let filtered = paths.filter { $0.contains("Confetti") || $0.contains("Fireworks") }
+    // Si dossier BLEU "Resources", laisse "Resources". Si dossier JAUNE (Group), mets nil.
+    private let lottieSubdir: String? = "Resources"
 
-        return paths
+    // Auto-détection de tous les .json dans le bundle (racine + Resources)
+    private var animationNames: [String] {
+        let inRes  = Bundle.main.paths(forResourcesOfType: "json", inDirectory: "Resources")
+        let inRoot = Bundle.main.paths(forResourcesOfType: "json", inDirectory: nil)
+        let all = (inRes + inRoot)
             .map { URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent }
+            .reduce(into: [String]()) { acc, name in if !acc.contains(name) { acc.append(name) } }
             .sorted()
+        #if DEBUG
+        print("[EndGameCongrats] JSON détectés:", all)
+        #endif
+        return all
     }
-    // Ton dossier est BLEU "Resources" → on précise le sous-dossier
-    private let lottieSubdir: String? = "Resources"   // (si dossier jaune: passe à nil)
 
     private var winnerName: String { entries.first?.name ?? "—" }
 
     var body: some View {
-        // Contenu “classique”
+        // === CONTENU PRINCIPAL (définit le layout du sheet) ===
         let content = VStack(spacing: 16) {
             Text("Partie terminée")
                 .font(.title3.bold())
@@ -52,7 +56,7 @@ struct EndGameCongratsView: View {
             }
             .foregroundStyle(.orange)
 
-            // TABLEAU DE CLASSEMENT — version originale
+            // Tableau "classique"
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(Array(entries.enumerated()), id: \.offset) { idx, e in
                     HStack {
@@ -64,34 +68,38 @@ struct EndGameCongratsView: View {
                 }
             }
             .padding()
-            .background(Color(.secondarySystemBackground))   // ⟵ le fond “classique”
+            .background(Color(.secondarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .shadow(radius: 2)
 
             Button(action: dismiss) {
-                Text("OK")
-                    .frame(maxWidth: .infinity)
+                Text("OK").frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
         }
         .padding(20)
 
-        // Lottie en ARRIÈRE-PLAN (ne modifie pas le tableau)
+        // === IMPORTANT : LOTTIE EN OVERLAY (n’affecte PAS la taille) ===
         return content
-            .background {
+            // (Optionnel) Dim léger pour mieux faire ressortir l’anim :
+            //.overlay(alignment: .center) {
+            //    Color.black.opacity(0.12).allowsHitTesting(false).clipped()
+            //}
+            .overlay(alignment: .center) {
+                // L’overlay reçoit exactement la même taille que `content`
                 LottieRandomCelebrationView(
                     names: animationNames,
-                    loopOnce: true,
-                    speed: 1.0,
+                    loopOnce: false,
+                    speed: 0.80,
                     subdirectory: lottieSubdir
                 )
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
+                .opacity(0.20)               // plein pot; ajuste si besoin
+                .blendMode(.normal)       // tu peux tester .screen / .plusLighter / .overlay
+                .allowsHitTesting(false)    // ne bloque pas le bouton OK
+                .clipped()                  // ne déborde pas du content
             }
             .presentationDetents([.medium])
             .presentationDragIndicator(.visible)
-            .onAppear {
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-            }
+            .onAppear { UINotificationFeedbackGenerator().notificationOccurred(.success) }
     }
 }
