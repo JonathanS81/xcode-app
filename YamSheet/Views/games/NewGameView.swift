@@ -194,6 +194,9 @@ struct NewGameView: View {
         game.enableChance = enableChance
         game.enableSmallStraight = enableSmallStraight
         game.enableExtraYamsBonus = enableExtraYamsBonus   // Prime Yams supplémentaire
+        
+        // ►► AJOUT : enregistre les participants de CETTE partie
+        game.participantIDs = chosenPlayers.map(\.id)
 
         // Scorecards pour chaque joueur
         for p in chosenPlayers {

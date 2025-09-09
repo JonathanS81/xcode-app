@@ -5,6 +5,13 @@ import SwiftData
 final class Game: Identifiable {
     var id: UUID
     
+    var participantIDs: [UUID] = []
+
+    
+    // MARK: - Turn Engine (stored properties)
+    
+    
+    
     // Paramètres figés au moment de la création (compat existante)
     var upperBonusThreshold: Int
     var upperBonusValue: Int
@@ -33,10 +40,48 @@ final class Game: Identifiable {
     // Relationship
     @Relationship(deleteRule: .cascade) var scorecards: [Scorecard] = []
     
-    var status: GameStatus {
-        get { GameStatus(rawValue: statusRaw) ?? .inProgress }
-        set { statusRaw = newValue.rawValue }
+    // MARK: - Turn Engine (stored properties)
+
+    var status: GameStatus? = nil
+
+    /// Toujours utiliser ce getter/setter pour lire/écrire le statut
+    var statusOrDefault: GameStatus {
+        get { status ?? .inProgress }
+        set { status = newValue }
     }
+
+    /// Ordre de passage des joueurs (IDs stables)
+    var turnOrder: [UUID] = [] as [UUID]             // annotation explicite
+
+    /// Index du joueur actif dans `turnOrder`
+    var currentTurnIndex: Int = 0
+
+    // --- Snapshot "1 case par tour": stockage en Data + propriété calculée ---
+    @Attribute(.externalStorage)
+    var lastFilledCountSnapshotData: Data? = nil
+
+    var lastFilledCountByPlayer: [UUID: Int] {
+        get {
+            guard let data = lastFilledCountSnapshotData else { return [:] }
+            // On décode un dictionnaire [UUID: Int]; fallback sur [:] si échec
+            return (try? JSONDecoder().decode([UUID: Int].self, from: data)) ?? [:]
+        }
+        set {
+            lastFilledCountSnapshotData = try? JSONEncoder().encode(newValue)
+        }
+    }
+
+    /// Cases obligatoires (figées selon options)
+    var requiredNotationKeys: [String] = [] as [String]
+
+    /// Cases optionnelles (ex: prime Yams supplémentaire)
+    var optionalNotationKeys: [String] = [] as [String]
+
+    /// Dates
+    var startedAt: Date? = nil
+    var endedAt: Date? = nil
+
+    
     
     // Helpers JSON
     // Helpers JSON (sans force-unwrap)
@@ -126,3 +171,7 @@ extension Game {
         }
     }
 }
+
+
+
+
