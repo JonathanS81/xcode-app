@@ -3,7 +3,7 @@ import SwiftData
 
 struct SampleData {
     static func ensureSamples(_ context: ModelContext) {
-        let playersCount = (try? context.fetch(FetchDescriptor<Player>()))?.count ?? 0
+        //let playersCount = (try? context.fetch(FetchDescriptor<Player>()))?.count ?? 0
         //if playersCount == 0 {
             //context.insert(Player(name: "Alice Dupont", nickname: "Ali"))
             //context.insert(Player(name: "Bruno Martin", nickname: "Bru"))
@@ -11,7 +11,7 @@ struct SampleData {
             //try? context.save()
         //}
         
-        let notationsCount = (try? context.fetch(FetchDescriptor<Notation>()))?.count ?? 0
+        //let notationsCount = (try? context.fetch(FetchDescriptor<Notation>()))?.count ?? 0
         /*if notationsCount == 0 {
             let classic = Notation(
                 name: "Classique",

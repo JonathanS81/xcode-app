@@ -192,6 +192,14 @@ struct GameDetailView: View {
         if game.enableSmallStraight { n += 1 }
         return n
     }
+    
+    /// Le joueur actif a-t-il saisi au moins 1 case depuis le début de son tour ?
+    private var canChangePlayerByTap: Bool {
+        guard game.statusOrDefault == .inProgress, let pid = game.activePlayerID else { return false }
+        let now = currentFillableCount(for: pid)
+        let start = game.lastFilledCountByPlayer[pid] ?? now
+        return (now - start) >= 1
+    }
 
     private func requiredFilledCount(for sc: Scorecard) -> Int {
         let i = scoreColumnIndex
@@ -217,6 +225,80 @@ struct GameDetailView: View {
         game.scorecards.allSatisfy { requiredFilledCount(for: $0) >= requiredCellsCountPerPlayer }
     }
 
+    // Terminer via le bouton OK du popup → verrouille + date de fin + retour liste
+    private func finishGameAndGoHome() {
+        game.statusOrDefault = .completed
+        game.endedAt = Date()
+        try? context.save()
+
+        // → préviens le parent (NewGameView) de se fermer aussi
+        NotificationCenter.default.post(name: .closeToGamesList, object: game.id)
+
+        showCongrats = false
+        DispatchQueue.main.async { dismiss() } // ferme GameDetailView
+    }
+
+    // Mettre en pause depuis le menu → verrouille + retour liste
+    private func pauseAndGoHome() {
+        let didAdvance = endTurnIfExactlyOneFilledAndAdvance()
+        markAutoAdvanceOnPause(didAdvance)
+        game.statusOrDefault = .paused
+        try? context.save()
+
+        // Notifier NewGameView de se fermer si on vient d'une sheet
+        NotificationCenter.default.post(name: .closeToGamesList, object: game.id)
+        DispatchQueue.main.async { dismiss() }
+    }
+
+    // Terminer depuis le menu (sans popup) → verrouille + date de fin + retour liste
+    private func finishNowAndGoHome() {
+        game.statusOrDefault = .completed
+        game.endedAt = Date()
+        try? context.save()
+
+        NotificationCenter.default.post(name: .closeToGamesList, object: game.id)
+        DispatchQueue.main.async { dismiss() }
+    }
+    
+    private func autoPauseIfNeeded(reason: String) {
+        guard game.statusOrDefault == .inProgress else { return }
+        let didAdvance = endTurnIfExactlyOneFilledAndAdvance()
+        markAutoAdvanceOnPause(didAdvance)
+        game.statusOrDefault = .paused
+        try? context.save()
+#if DEBUG
+        print("[GameDetailView] Auto-pause (\(reason)) • didAdvance=\(didAdvance)")
+#endif
+    }
+        
+    // Calcule si on doit valider auto le tour lors d'une pause et avance si besoin.
+    private func endTurnIfExactlyOneFilledAndAdvance() -> Bool {
+        guard game.statusOrDefault == .inProgress, let pid = game.activePlayerID else { return false }
+        let now = currentFillableCount(for: pid)
+        let start = game.lastFilledCountByPlayer[pid] ?? now
+        guard (now - start) == 1 else { return false } // exactement 1 case saisie
+
+        game.endTurnCommit(for: pid, fillableCount: now)
+        game.advanceToNextPlayer()
+        // Optionnel : initialiser le snapshot du nouveau joueur
+        ensureTurnSnapshotInitialized()
+        return true
+    }
+
+    // Flag persistant pour expliquer la reprise
+    private func markAutoAdvanceOnPause(_ didAdvance: Bool) {
+        let key = "autoAdvanceOnPause.\(game.id.uuidString)"
+        UserDefaults.standard.set(didAdvance, forKey: key)
+    }
+
+    private func consumeAutoAdvanceOnPauseFlag() -> Bool {
+        let key = "autoAdvanceOnPause.\(game.id.uuidString)"
+        let did = UserDefaults.standard.bool(forKey: key)
+        UserDefaults.standard.removeObject(forKey: key)
+        return did
+    }
+    
+    
     // ===== Actions =====
     private func onNextPlayerTapped() {
         guard let pid = game.activePlayerID else { return }
@@ -287,10 +369,25 @@ struct GameDetailView: View {
             }
         }
     }
-
-    /// Rendre actif un joueur en cliquant son nom de colonne
+    /// Changer de joueur via clic sur l’étiquette de colonne
     private func setActivePlayer(_ pid: UUID) {
-        if let ap = game.activePlayerID, ap == pid { return }  // évite travail inutile
+        // Pas de switch si la partie n’est pas en cours
+        guard game.statusOrDefault == .inProgress else { return }
+        guard let current = game.activePlayerID else { return }
+        // Déjà actif → rien à faire
+        if current == pid { return }
+
+        // Interdit si aucune case n'a été remplie durant ce tour
+        let now = currentFillableCount(for: current)
+        let start = game.lastFilledCountByPlayer[current] ?? now
+        guard (now - start) >= 1 else {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            alertMessage = "Remplis au moins une case avant de changer de joueur."
+            showAlert = true
+            return
+        }
+
+        // Autorisé : bascule d’affichage vers l’autre joueur (sans valider le tour)
         game.jumpTo(playerID: pid)
         ensureTurnSnapshotInitialized()
     }
@@ -327,15 +424,47 @@ struct GameDetailView: View {
             EndGameCongratsView(
                 gameName: game.name,
                 entries: endGameEntries,
-                dismiss: { showCongrats = false }
-            )
+                dismiss: { finishGameAndGoHome() }            )
         }
         .onAppear {
-            NotificationManager.requestAuthorizationIfNeeded()   // ← nouvelle ligne
+            NotificationManager.requestAuthorizationIfNeeded()
             if game.turnOrder.isEmpty && orderedPlayers.count >= 2 { showOrderSheet = true }
             ensureTurnSnapshotInitialized()
+
+            if game.statusOrDefault == .paused {
+                let didAdvance = consumeAutoAdvanceOnPauseFlag()
+                game.statusOrDefault = .inProgress
+                try? context.save()
+                if didAdvance {
+                    alertMessage = "Le tour précédent a été validé. À \(activePlayerName) de jouer !"
+                } else {
+                    alertMessage = "À \(activePlayerName) de jouer !"
+                }
+                showAlert = true
+            }
         }
-        .onChange(of: game.activePlayerID) { _ in ensureTurnSnapshotInitialized() }
+        .onChange(of: game.activePlayerID) {  _,_ in ensureTurnSnapshotInitialized() }
+        
+        // iOS 16/17 : choisis l’un des deux .onChange selon ce que tu utilises déjà
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active {
+                autoPauseIfNeeded(reason: "scenePhase=\(phase)")
+            }
+        }
+        // ou en iOS17+
+        /*
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase != .active {
+                autoPauseIfNeeded(reason: "scenePhase=\(newPhase)")
+            }
+        }
+        */
+
+        .onDisappear {
+            autoPauseIfNeeded(reason: "onDisappear")
+        }
+        
+        
         .scrollDismissesKeyboard(.interactively)
         .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
         .navigationTitle(UIStrings.Game.title)
@@ -365,15 +494,15 @@ ToolbarItem(placement: .navigationBarLeading) {
                             .controlSize(.small)
                     }
                     Menu {
-                        Button(game.statusOrDefault == .paused ? UIStrings.Game.resume : UIStrings.Game.pause) {
-                            game.statusOrDefault = (game.statusOrDefault == .paused) ? .inProgress : .paused
-                            try? context.save()
+                        if game.statusOrDefault == .inProgress {
+                            Button(UIStrings.Game.pause)  { pauseAndGoHome() }      // pause + retour
+                            Button(UIStrings.Game.finish) { finishNowAndGoHome() }  // terminer + retour
+                        } else {
+                            Text("Partie verrouillée")
                         }
-                        Button(UIStrings.Game.finish) {
-                            game.statusOrDefault = .completed
-                            try? context.save()
-                        }
-                    } label: { Image(systemName: "ellipsis.circle") }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
                 }
             }
 
@@ -431,6 +560,8 @@ ToolbarItem(placement: .navigationBarLeading) {
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .padding(.horizontal, 2)
                     .contentShape(Rectangle())               // ← zone cliquable
+                    .opacity(canChangePlayerByTap ? 1.0 : 0.45)     // 👈 indice visuel
+       
                     .onTapGesture { setActivePlayer(pid) }    // ← activer le joueur
             }
         }
@@ -969,9 +1100,11 @@ ToolbarItem(placement: .navigationBarLeading) {
                             applyValidation(intVal)
                         }
                     }
+                
                     .onChange(of: isFocused) { was, now in
                         if was && !now { commit() }
                     }
+                
 
                 if let map = displayMap, value >= 0 {
                     let eff = map(value)

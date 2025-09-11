@@ -22,7 +22,7 @@ enum NotificationManager {
     static func postEndGame(winnerName: String, gameName: String?, rankings: [(String, Int)]) {
         let content = UNMutableNotificationContent()
         content.title = "Partie terminée 🎉"
-        let gName = (gameName?.isEmpty == false) ? " «\(gameName!)»" : ""
+        //let gName = (gameName?.isEmpty == false) ? " «\(gameName!)»" : ""
         content.subtitle = "Bravo \(winnerName) !"
         let top3 = rankings.prefix(3)
             .enumerated()
