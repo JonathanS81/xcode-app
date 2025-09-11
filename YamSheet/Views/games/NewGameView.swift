@@ -162,6 +162,10 @@ struct NewGameView: View {
                 }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .closeToGamesList)) { _ in
+            // Ferme la feuille de création si on termine/mete en pause depuis GameDetailView
+            dismiss()
+        }
     }
 
     // MARK: - Création de la partie
