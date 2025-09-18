@@ -1,14 +1,23 @@
+//
+//  GameDetailView.swift
+//  YamSheet
+//
+//  Created by Jonathan Sportiche  on 06/09/2025.
+//
+
 import SwiftUI
 import SwiftData
 
 struct GameDetailView: View {
+    // MARK: - Env & Model
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
+
     @Query private var allPlayers: [Player]
-    
     @Bindable var game: Game
 
-    // ===== UI State =====
+    // MARK: - UI State
     @State private var showTip = false
     @State private var tipText = ""
     @State private var showRevokeYams = false
@@ -17,16 +26,72 @@ struct GameDetailView: View {
     @State private var showOrderSheet = false
     @State private var alertMessage = ""
     @State private var showAlert = false
-    
-    @Environment(\.scenePhase) private var scenePhase
     @State private var showCongrats = false
     @State private var endGameEntries: [EndGameCongratsView.Entry] = []
 
-
-    // Index de colonne affichée (multi-colonnes plus tard)
+    // MARK: - Columns (multi-colonnes plus tard)
     private var scoreColumnIndex: Int { 0 }
 
-    // ===== Participants & Ordre =====
+    // MARK: - Layout
+    private let outerHPadding: CGFloat = 32    // .padding(.horizontal) 16+16
+    private let labelColumnWidth: CGFloat = 110
+    private let perColumnOuterPad: CGFloat = 4 // padding(.horizontal,2) visuel sur colonnes
+    private let safetyGutter: CGFloat = 8      // marge anti-rognage
+
+    /// IDs des joueurs à afficher (actif d’abord)
+    private var displayPlayerIDs: [UUID] {
+        var seen = Set<UUID>(), ids: [UUID] = []
+        if let active = game.activePlayerID,
+           game.scorecards.contains(where: { $0.playerID == active }) {
+            ids.append(active); seen.insert(active)
+        }
+        for id in game.turnOrder where !seen.contains(id) {
+            if game.scorecards.contains(where: { $0.playerID == id }) { ids.append(id); seen.insert(id) }
+        }
+        for sc in game.scorecards where !seen.contains(sc.playerID) {
+            ids.append(sc.playerID); seen.insert(sc.playerID)
+        }
+        return ids
+    }
+
+    /// Largeur mini d'une colonne joueur, calculée pour que 1–4 joueurs tiennent sans scroll.
+    /// Bornée 50..64 pour conserver la lisibilité.
+    private var minCellWidth: CGFloat {
+        let n = max(1, min(4, displayPlayerIDs.count)) // calcule pour 1..4
+        let screenW = UIScreen.main.bounds.width
+        let available = max(0,
+            screenW
+            - outerHPadding
+            - labelColumnWidth
+            - safetyGutter
+            - CGFloat(n) * perColumnOuterPad
+        )
+        let perCol = floor(available / CGFloat(n))
+        return max(50, min(64, perCol))
+    }
+
+    /// Padding interne dynamique (on serre à 4 joueurs)
+    private var cellPadding: CGFloat {
+        switch displayPlayerIDs.count {
+        case 0,1: return 8
+        case 2:   return 7
+        case 3:   return 5
+        case 4:   return 2
+        default:  return 8
+        }
+    }
+
+    /// Police proportionnelle à la largeur de colonne
+    private var cellFont: Font {
+        let sz = max(13, min(17, minCellWidth * 0.32))
+        return .system(size: sz)
+    }
+    private var badgeFont: Font {
+        let sz = max(10, min(12, minCellWidth * 0.28))
+        return .system(size: sz)
+    }
+
+    // MARK: - Participants & Order
     private var participants: [Player] {
         let byId = Dictionary(uniqueKeysWithValues: allPlayers.map { ($0.id, $0) })
         return game.participantIDs.compactMap { byId[$0] }
@@ -43,29 +108,9 @@ struct GameDetailView: View {
         return game.scorecards.firstIndex(where: { $0.playerID == pid })
     }
 
-    /// Mapping index de scorecard par joueur
+    /// index de scorecard par id joueur
     private var scorecardIndexByPlayerID: [UUID: Int] {
         Dictionary(uniqueKeysWithValues: game.scorecards.enumerated().map { ($0.element.playerID, $0.offset) })
-    }
-
-    /// IDs de colonnes à afficher : joueur actif d’abord, puis ordre de tour, puis éventuels restants
-    private var displayPlayerIDs: [UUID] {
-        var seen = Set<UUID>()
-        var ids: [UUID] = []
-
-        if let active = game.activePlayerID,
-           game.scorecards.contains(where: { $0.playerID == active }) {
-            ids.append(active); seen.insert(active)
-        }
-        for id in game.turnOrder where !seen.contains(id) {
-            if game.scorecards.contains(where: { $0.playerID == id }) {
-                ids.append(id); seen.insert(id)
-            }
-        }
-        for sc in game.scorecards where !seen.contains(sc.playerID) {
-            ids.append(sc.playerID); seen.insert(sc.playerID)
-        }
-        return ids
     }
 
     // “Au tour de …”
@@ -77,80 +122,13 @@ struct GameDetailView: View {
         return "—"
     }
 
-    // === DEBUG ONLY ===
-    #if DEBUG
-    /// S'assure que le tableau de valeurs a au moins 'scoreColumnIndex + 1' éléments.
-    private func ensureCapacity(_ arr: inout [Int], at idx: Int) {
-        if idx >= arr.count {
-            arr.append(contentsOf: Array(repeating: -1, count: idx - arr.count + 1))
-        }
-    }
-
-    /// Écrit une valeur dans un keyPath de Scorecard, colonne courante.
-    private func debugSetValue(playerIdx: Int, keyPath: WritableKeyPath<Scorecard, [Int]>, value: Int) {
-        var arr = game.scorecards[playerIdx][keyPath: keyPath]
-        ensureCapacity(&arr, at: scoreColumnIndex)
-        arr[scoreColumnIndex] = value
-        game.scorecards[playerIdx][keyPath: keyPath] = arr
-    }
-
-    /// Remplit toutes les cases requises (0) pour tous les joueurs afin de forcer "partie terminée".
-    private func debugFillAllRequiredAndComplete(showNotification: Bool = false) {
-        for i in game.scorecards.indices {
-            // Section haute
-            debugSetValue(playerIdx: i, keyPath: \.ones,   value: 0)
-            debugSetValue(playerIdx: i, keyPath: \.twos,   value: 0)
-            debugSetValue(playerIdx: i, keyPath: \.threes, value: 0)
-            debugSetValue(playerIdx: i, keyPath: \.fours,  value: 0)
-            debugSetValue(playerIdx: i, keyPath: \.fives,  value: 0)
-            debugSetValue(playerIdx: i, keyPath: \.sixes,  value: 0)
-            // Section milieu
-            debugSetValue(playerIdx: i, keyPath: \.maxVals, value: 0)
-            debugSetValue(playerIdx: i, keyPath: \.minVals, value: 0)
-            // Section basse
-            debugSetValue(playerIdx: i, keyPath: \.brelan, value: 0)
-            if game.enableChance {
-                debugSetValue(playerIdx: i, keyPath: \.chance, value: 0)
-            }
-            debugSetValue(playerIdx: i, keyPath: \.full,  value: 0)
-            debugSetValue(playerIdx: i, keyPath: \.suite, value: 0) // 0 = barré / présent selon règle
-            if game.enableSmallStraight {
-                debugSetValue(playerIdx: i, keyPath: \.petiteSuite, value: 0) // 0 = barré
-            }
-            debugSetValue(playerIdx: i, keyPath: \.carre, value: 0)
-            debugSetValue(playerIdx: i, keyPath: \.yams,  value: 0)
-        }
-
-        // Marquer la partie terminée + déclencher pop-up ou notif
-        game.statusOrDefault = .completed
-        game.endedAt = Date()
-        try? context.save()
-
-        let ranking: [(String, Int)] = orderedPlayers
-            .map { ($0.nickname, totalScore(for: $0.id)) }
-            .sorted { $0.1 > $1.1 }
-
-        if showNotification {
-            NotificationManager.postEndGame(
-                winnerName: ranking.first?.0 ?? "—",
-                gameName: game.name,
-                rankings: ranking
-            )
-        } else {
-            endGameEntries = ranking.map { EndGameCongratsView.Entry(name: $0.0, score: $0.1) }
-            showCongrats = true
-        }
-    }
-    #endif
-
-    
-    // ===== Helpers Tour par tour =====
+    // MARK: - Tour par tour
     private func isCellEnabled(for playerID: UUID) -> Bool {
         guard game.statusOrDefault == .inProgress else { return false }
         return game.activePlayerID == playerID
     }
 
-    /// nombre de cases (requises + optionnelles) remplies pour un joueur
+    /// nb de cases remplies (toutes sections)
     private func currentFillableCount(for playerID: UUID) -> Int {
         guard let sc = game.scorecards.first(where: { $0.playerID == playerID }) else { return 0 }
         let i = scoreColumnIndex
@@ -192,8 +170,7 @@ struct GameDetailView: View {
         if game.enableSmallStraight { n += 1 }
         return n
     }
-    
-    /// Le joueur actif a-t-il saisi au moins 1 case depuis le début de son tour ?
+
     private var canChangePlayerByTap: Bool {
         guard game.statusOrDefault == .inProgress, let pid = game.activePlayerID else { return false }
         let now = currentFillableCount(for: pid)
@@ -205,12 +182,9 @@ struct GameDetailView: View {
         let i = scoreColumnIndex
         func f(_ a: [Int]) -> Int { (i < a.count && a[i] >= 0) ? 1 : 0 }
         var c = 0
-        // haute
         c += f(sc.ones); c += f(sc.twos); c += f(sc.threes)
         c += f(sc.fours); c += f(sc.fives); c += f(sc.sixes)
-        // milieu
         c += f(sc.maxVals); c += f(sc.minVals)
-        // basse
         c += f(sc.brelan)
         if game.enableChance { c += f(sc.chance) }
         c += f(sc.full)
@@ -225,82 +199,10 @@ struct GameDetailView: View {
         game.scorecards.allSatisfy { requiredFilledCount(for: $0) >= requiredCellsCountPerPlayer }
     }
 
-    // Terminer via le bouton OK du popup → verrouille + date de fin + retour liste
-    private func finishGameAndGoHome() {
-        game.statusOrDefault = .completed
-        game.endedAt = Date()
-        try? context.save()
-
-        // → préviens le parent (NewGameView) de se fermer aussi
-        NotificationCenter.default.post(name: .closeToGamesList, object: game.id)
-
-        showCongrats = false
-        DispatchQueue.main.async { dismiss() } // ferme GameDetailView
-    }
-
-    // Mettre en pause depuis le menu → verrouille + retour liste
-    private func pauseAndGoHome() {
-        let didAdvance = endTurnIfExactlyOneFilledAndAdvance()
-        markAutoAdvanceOnPause(didAdvance)
-        game.statusOrDefault = .paused
-        try? context.save()
-
-        // Notifier NewGameView de se fermer si on vient d'une sheet
-        NotificationCenter.default.post(name: .closeToGamesList, object: game.id)
-        DispatchQueue.main.async { dismiss() }
-    }
-
-    // Terminer depuis le menu (sans popup) → verrouille + date de fin + retour liste
-    private func finishNowAndGoHome() {
-        game.statusOrDefault = .completed
-        game.endedAt = Date()
-        try? context.save()
-
-        NotificationCenter.default.post(name: .closeToGamesList, object: game.id)
-        DispatchQueue.main.async { dismiss() }
-    }
-    
-    private func autoPauseIfNeeded(reason: String) {
-        guard game.statusOrDefault == .inProgress else { return }
-        let didAdvance = endTurnIfExactlyOneFilledAndAdvance()
-        markAutoAdvanceOnPause(didAdvance)
-        game.statusOrDefault = .paused
-        try? context.save()
-#if DEBUG
-        print("[GameDetailView] Auto-pause (\(reason)) • didAdvance=\(didAdvance)")
-#endif
-    }
-        
-    // Calcule si on doit valider auto le tour lors d'une pause et avance si besoin.
-    private func endTurnIfExactlyOneFilledAndAdvance() -> Bool {
-        guard game.statusOrDefault == .inProgress, let pid = game.activePlayerID else { return false }
-        let now = currentFillableCount(for: pid)
-        let start = game.lastFilledCountByPlayer[pid] ?? now
-        guard (now - start) == 1 else { return false } // exactement 1 case saisie
-
-        game.endTurnCommit(for: pid, fillableCount: now)
-        game.advanceToNextPlayer()
-        // Optionnel : initialiser le snapshot du nouveau joueur
-        ensureTurnSnapshotInitialized()
-        return true
-    }
-
-    // Flag persistant pour expliquer la reprise
-    private func markAutoAdvanceOnPause(_ didAdvance: Bool) {
-        let key = "autoAdvanceOnPause.\(game.id.uuidString)"
-        UserDefaults.standard.set(didAdvance, forKey: key)
-    }
-
-    private func consumeAutoAdvanceOnPauseFlag() -> Bool {
-        let key = "autoAdvanceOnPause.\(game.id.uuidString)"
-        let did = UserDefaults.standard.bool(forKey: key)
-        UserDefaults.standard.removeObject(forKey: key)
-        return did
-    }
-    
-    
-    // ===== Actions =====
+    // MARK: - Actions
     private func onNextPlayerTapped() {
+        hideKeyboard() // commit NumericRow si focus
+
         guard let pid = game.activePlayerID else { return }
         let countNow = currentFillableCount(for: pid)
         game.beginTurnSnapshot(for: pid, fillableCount: countNow)
@@ -315,17 +217,10 @@ struct GameDetailView: View {
         if isGameCompletedNow() {
             game.statusOrDefault = .completed
             game.endedAt = Date()
-
-            // Construire le classement (nom + score)
             let ranking: [(String, Int)] = orderedPlayers
                 .map { ($0.nickname, totalScore(for: $0.id)) }
                 .sorted { $0.1 > $1.1 }
 
-           
-         
-
-
-            // Si app inactive → notification locale. Sinon → pop-up confettis.
             if scenePhase != .active {
                 NotificationManager.postEndGame(
                     winnerName: ranking.first?.0 ?? "—",
@@ -333,7 +228,6 @@ struct GameDetailView: View {
                     rankings: ranking
                 )
             } else {
-                //endGameEntries = ranking.map { EndGameCongratsView.Entry(name: $0.0, score: $0.1) }
                 endGameEntries = ranking.map { .init(name: $0.0, score: $0.1) }
                 showCongrats = true
             }
@@ -341,20 +235,48 @@ struct GameDetailView: View {
         try? context.save()
     }
 
-    private func onPauseTapped() {
+    private func pauseAndGoHome() {
+        let didAdvance = endTurnIfExactlyOneFilledAndAdvance()
+        markAutoAdvanceOnPause(didAdvance)
         game.statusOrDefault = .paused
         try? context.save()
+        NotificationCenter.default.post(name: .closeToGamesList, object: game.id)
+        DispatchQueue.main.async { dismiss() }
     }
 
-    private func revokeExtraYams(for playerIdx: Int) {
-        var arr = game.scorecards[playerIdx].extraYamsAwarded
-        if scoreColumnIndex < arr.count && scoreColumnIndex >= 0 {
-            arr[scoreColumnIndex] = false
-            game.scorecards[playerIdx].extraYamsAwarded = arr
-            try? context.save()
-        }
+    private func finishNowAndGoHome() {
+        game.statusOrDefault = .completed
+        game.endedAt = Date()
+        try? context.save()
+        NotificationCenter.default.post(name: .closeToGamesList, object: game.id)
+        DispatchQueue.main.async { dismiss() }
     }
 
+    private func endTurnIfExactlyOneFilledAndAdvance() -> Bool {
+        guard game.statusOrDefault == .inProgress, let pid = game.activePlayerID else { return false }
+        let now = currentFillableCount(for: pid)
+        let start = game.lastFilledCountByPlayer[pid] ?? now
+        guard (now - start) == 1 else { return false }
+
+        game.endTurnCommit(for: pid, fillableCount: now)
+        game.advanceToNextPlayer()
+        ensureTurnSnapshotInitialized()
+        return true
+    }
+
+    private func markAutoAdvanceOnPause(_ didAdvance: Bool) {
+        let key = "autoAdvanceOnPause.\(game.id.uuidString)"
+        UserDefaults.standard.set(didAdvance, forKey: key)
+    }
+
+    private func consumeAutoAdvanceOnPauseFlag() -> Bool {
+        let key = "autoAdvanceOnPause.\(game.id.uuidString)"
+        let did = UserDefaults.standard.bool(forKey: key)
+        UserDefaults.standard.removeObject(forKey: key)
+        return did
+    }
+
+    // MARK: - Apparence cellules
     private func isActiveIndex(_ idx: Int) -> Bool {
         guard let pid = game.activePlayerID else { return false }
         return game.scorecards[idx].playerID == pid
@@ -369,15 +291,42 @@ struct GameDetailView: View {
             }
         }
     }
-    /// Changer de joueur via clic sur l’étiquette de colonne
+
+    // MARK: - Manquants utiles
+    private func finishGameAndGoHome() {
+        game.statusOrDefault = .completed
+        game.endedAt = Date()
+        try? context.save()
+        NotificationCenter.default.post(name: .closeToGamesList, object: game.id)
+        showCongrats = false
+        DispatchQueue.main.async { dismiss() }
+    }
+
+    private func autoPauseIfNeeded(reason: String) {
+        guard game.statusOrDefault == .inProgress else { return }
+        let didAdvance = endTurnIfExactlyOneFilledAndAdvance()
+        markAutoAdvanceOnPause(didAdvance)
+        game.statusOrDefault = .paused
+        try? context.save()
+        #if DEBUG
+        print("[GameDetailView] Auto-pause (\(reason)) • didAdvance=\(didAdvance)")
+        #endif
+    }
+
+    private func revokeExtraYams(for playerIdx: Int) {
+        var arr = game.scorecards[playerIdx].extraYamsAwarded
+        if scoreColumnIndex < arr.count && scoreColumnIndex >= 0 {
+            arr[scoreColumnIndex] = false
+            game.scorecards[playerIdx].extraYamsAwarded = arr
+            try? context.save()
+        }
+    }
+
     private func setActivePlayer(_ pid: UUID) {
-        // Pas de switch si la partie n’est pas en cours
         guard game.statusOrDefault == .inProgress else { return }
         guard let current = game.activePlayerID else { return }
-        // Déjà actif → rien à faire
         if current == pid { return }
 
-        // Interdit si aucune case n'a été remplie durant ce tour
         let now = currentFillableCount(for: current)
         let start = game.lastFilledCountByPlayer[current] ?? now
         guard (now - start) >= 1 else {
@@ -386,22 +335,42 @@ struct GameDetailView: View {
             showAlert = true
             return
         }
-
-        // Autorisé : bascule d’affichage vers l’autre joueur (sans valider le tour)
         game.jumpTo(playerID: pid)
         ensureTurnSnapshotInitialized()
     }
 
+    // MARK: - Header moderne
+    private var activeIndexForChips: Int? {
+        guard let aid = game.activePlayerID else { return nil }
+        return orderedPlayers.firstIndex(where: { $0.id == aid })
+    }
+
+    private var statusSubtitle: String? {
+        switch game.statusOrDefault {
+        case .inProgress: return "À \(activePlayerName) de jouer"
+        case .paused:     return "Partie en pause"
+        case .completed:  return "Partie terminée"
+        }
+    }
+
+    @ViewBuilder
+    private func modernHeader() -> some View {
+        GDV_Header(title: game.name, subtitle: statusSubtitle)
+        GDV_PlayerChips(
+            players: orderedPlayers.map { $0.nickname },
+            activeIndex: activeIndexForChips
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     // MARK: - Body
     var body: some View {
-        ScrollView(.vertical) {
-            VStack(spacing: 12) {
-                // Ruban “Au tour de …” sous le titre, à gauche
-                turnRibbon()
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 12) {
+                modernHeader()
                 grid()
             }
             .padding(.horizontal)
-            .animation(.easeInOut(duration: 0.25), value: displayPlayerIDs)
         }
         .sheet(isPresented: $showEndGameSheet) {
             let entries: [EndGameSheet.Entry] = orderedPlayers
@@ -415,8 +384,7 @@ struct GameDetailView: View {
                 idFor: { $0.id },
                 nameFor: { $0.nickname },
                 onConfirm: { ids in
-                    game.setTurnOrder(ids)
-                    try? context.save()
+                    game.setTurnOrder(ids); try? context.save()
                 }
             )
         }
@@ -424,7 +392,8 @@ struct GameDetailView: View {
             EndGameCongratsView(
                 gameName: game.name,
                 entries: endGameEntries,
-                dismiss: { finishGameAndGoHome() }            )
+                dismiss: { finishGameAndGoHome() }
+            )
         }
         .onAppear {
             NotificationManager.requestAuthorizationIfNeeded()
@@ -435,57 +404,34 @@ struct GameDetailView: View {
                 let didAdvance = consumeAutoAdvanceOnPauseFlag()
                 game.statusOrDefault = .inProgress
                 try? context.save()
-                if didAdvance {
-                    alertMessage = "Le tour précédent a été validé. À \(activePlayerName) de jouer !"
-                } else {
-                    alertMessage = "À \(activePlayerName) de jouer !"
-                }
+                alertMessage = didAdvance
+                    ? "Le tour précédent a été validé. À \(activePlayerName) de jouer !"
+                    : "À \(activePlayerName) de jouer !"
                 showAlert = true
             }
         }
-        .onChange(of: game.activePlayerID) {  _,_ in ensureTurnSnapshotInitialized() }
-        
-        // iOS 16/17 : choisis l’un des deux .onChange selon ce que tu utilises déjà
+        .onChange(of: game.activePlayerID) { _, _ in ensureTurnSnapshotInitialized() }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active {
-                autoPauseIfNeeded(reason: "scenePhase=\(phase)")
-            }
+            if phase != .active { autoPauseIfNeeded(reason: "scenePhase=\(phase)") }
         }
-        // ou en iOS17+
-        /*
-        .onChange(of: scenePhase) { _, newPhase in
-            if newPhase != .active {
-                autoPauseIfNeeded(reason: "scenePhase=\(newPhase)")
-            }
-        }
-        */
-
-        .onDisappear {
-            autoPauseIfNeeded(reason: "onDisappear")
-        }
-        
-        
+        .onDisappear { autoPauseIfNeeded(reason: "onDisappear") }
         .scrollDismissesKeyboard(.interactively)
         .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
         .navigationTitle(UIStrings.Game.title)
         .toolbar {
 #if DEBUG
-// Menu coccinelle côté gauche pour tests fin de partie
-ToolbarItem(placement: .navigationBarLeading) {
-    Menu {
-        Button("Debug • Terminer maintenant (popup)") {
-            debugFillAllRequiredAndComplete(showNotification: false)
-        }
-        Button("Debug • Terminer avec notification") {
-            NotificationManager.requestAuthorizationIfNeeded()
-            debugFillAllRequiredAndComplete(showNotification: true)
-        }
-    } label: {
-        Image(systemName: "ladybug.fill")
-    }
-}
+            ToolbarItem(placement: .navigationBarLeading) {
+                Menu {
+                    Button("Debug • Terminer maintenant (popup)") {
+                        debugFillAllRequiredAndComplete(showNotification: false)
+                    }
+                    Button("Debug • Terminer avec notification") {
+                        NotificationManager.requestAuthorizationIfNeeded()
+                        debugFillAllRequiredAndComplete(showNotification: true)
+                    }
+                } label: { Image(systemName: "ladybug.fill") }
+            }
 #endif
-            // Trailing : bouton “Joueur suivant” (si 1 case) + menu
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 8) {
                     if canShowNextButton {
@@ -495,18 +441,14 @@ ToolbarItem(placement: .navigationBarLeading) {
                     }
                     Menu {
                         if game.statusOrDefault == .inProgress {
-                            Button(UIStrings.Game.pause)  { pauseAndGoHome() }      // pause + retour
-                            Button(UIStrings.Game.finish) { finishNowAndGoHome() }  // terminer + retour
+                            Button(UIStrings.Game.pause)  { pauseAndGoHome() }
+                            Button(UIStrings.Game.finish) { finishNowAndGoHome() }
                         } else {
                             Text("Partie verrouillée")
                         }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
+                    } label: { Image(systemName: "ellipsis.circle") }
                 }
             }
-
-            // Bouton Terminé (clavier)
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("Terminé") { hideKeyboard() }
@@ -526,199 +468,316 @@ ToolbarItem(placement: .navigationBarLeading) {
         }
     }
 
-    // MARK: - Ruban “Au tour de …”
-    @ViewBuilder
-    private func turnRibbon() -> some View {
-        HStack {
-            Text("Au tour de \(activePlayerName)")
-                .font(.headline)
-                .padding(.vertical, 6)
-                .padding(.horizontal, 10)
-                .background(Color.secondary.opacity(0.12))
-                .clipShape(Capsule())
-            Spacer()
+    // MARK: - Grid (≤4 joueurs compact, ≥5 joueurs labels figés + scroll horizontal)
+    @ViewBuilder private func grid() -> some View {
+        let needsHorizontal = displayPlayerIDs.count >= 5
+
+        if needsHorizontal {
+            HStack(alignment: .top, spacing: 0) {
+                labelsColumn()
+                ScrollView(.horizontal) {
+                    playersColumnsBody()
+                        .frame(minWidth: CGFloat(displayPlayerIDs.count) * (minCellWidth + perColumnOuterPad),
+                               alignment: .leading)
+                }
+            }
+        } else {
+            VStack(spacing: 8) {
+                // Header colonnes (noms)
+                HStack(spacing: 0) {
+                    Text("").frame(width: labelColumnWidth, alignment: .leading)
+                    playersColumnsHeader()
+                }
+
+                // Section haute
+                HStack { Text(UIStrings.Game.upperSection).font(.headline).frame(width: labelColumnWidth, alignment: .leading); Spacer() }
+                rowUpper(label: UIStrings.Game.ones,   face: 1, keyPath: \Scorecard.ones)
+                rowUpper(label: UIStrings.Game.twos,   face: 2, keyPath: \Scorecard.twos)
+                rowUpper(label: UIStrings.Game.threes, face: 3, keyPath: \Scorecard.threes)
+                rowUpper(label: UIStrings.Game.fours,  face: 4, keyPath: \Scorecard.fours)
+                rowUpper(label: UIStrings.Game.fives,  face: 5, keyPath: \Scorecard.fives)
+                rowUpper(label: UIStrings.Game.sixes,  face: 6, keyPath: \Scorecard.sixes)
+                totalsRow(label: UIStrings.Game.total1, valueForPlayer: total1Text)
+
+                // Section milieu
+                HStack { Text(UIStrings.Game.middleSection).font(.headline).frame(width: labelColumnWidth, alignment: .leading); Spacer() }
+                rowMaxMin(label: UIStrings.Game.max, keyPath: \Scorecard.maxVals)
+                rowMaxMin(label: UIStrings.Game.min, keyPath: \Scorecard.minVals)
+                totalsRow(label: UIStrings.Game.total2, valueForPlayer: total2Text)
+
+                // Section basse
+                HStack { Text(UIStrings.Game.bottomSection).font(.headline).frame(width: labelColumnWidth, alignment: .leading); Spacer() }
+                rowBottom(label: UIStrings.Game.brelan, keyPath: \Scorecard.brelan,
+                          validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleBrelan) },
+                          displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleBrelan) })
+                if game.enableChance {
+                    rowBottom(label: UIStrings.Game.chance, keyPath: \Scorecard.chance,
+                              validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleChance) },
+                              displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleChance) })
+                }
+                rowBottom(label: UIStrings.Game.full, keyPath: \Scorecard.full,
+                          validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleFull) },
+                          displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleFull) })
+
+                HStack(spacing: 0) {
+                    Text(UIStrings.Game.suite).frame(width: labelColumnWidth, alignment: .leading)
+                    pickerRowPlayersOnly(allowedValues: [0,15,20],
+                                         label: UIStrings.Game.suite,
+                                         valueToText: GDV_Helpers.displaySuiteValue,
+                                         keyPath: \.suite)
+                }
+
+                if game.enableSmallStraight {
+                    HStack(spacing: 0) {
+                        Text(UIStrings.Game.petiteSuite).frame(width: labelColumnWidth, alignment: .leading)
+                        pickerRowPlayersOnly(allowedValues: [0,1],
+                                             label: UIStrings.Game.petiteSuite,
+                                             valueToText: GDV_Helpers.displayPetiteSuiteValue,
+                                             keyPath: \.petiteSuite)
+                    }
+                }
+
+                rowBottom(label: UIStrings.Game.carre, keyPath: \Scorecard.carre,
+                          validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleCarre) },
+                          displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleCarre) })
+
+                rowBottom(label: UIStrings.Game.yams, keyPath: \Scorecard.yams,
+                          validator: { sanitizeYamsForSnapshot($0) },
+                          displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleYams) })
+
+                if extraYamsIsEnabled {
+                    HStack(spacing: 0) {
+                        Text("Prime Yams supplémentaire").frame(width: labelColumnWidth, alignment: .leading)
+                        extraYamsRowPlayersOnly()
+                    }
+                }
+
+                totalsRow(label: UIStrings.Game.total3, valueForPlayer: total3Text)
+                totalsRow(label: UIStrings.Game.totalAll, valueForPlayer: totalAllText)
+                    .padding(.top, 6)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.top, 4)
     }
 
-    // MARK: - Header colonnes (noms au-dessus des colonnes)
-    @ViewBuilder
-    private func columnsHeader() -> some View {
-        HStack(spacing: 0) {
-            // espace réservé pour les libellés de lignes (110 de large)
-            Text("").frame(width: 110, alignment: .leading)
+    // MARK: - Sous-vues (labels figés & colonnes joueurs)
+    private func labelsColumn() -> some View {
+        VStack(spacing: 8) {
+            Color.clear.frame(height: 26) // header placeholder
 
+            // Section haute
+            HStack { Text(UIStrings.Game.upperSection).font(.headline); Spacer() }
+            Text(UIStrings.Game.ones)
+            Text(UIStrings.Game.twos)
+            Text(UIStrings.Game.threes)
+            Text(UIStrings.Game.fours)
+            Text(UIStrings.Game.fives)
+            Text(UIStrings.Game.sixes)
+            Text(UIStrings.Game.total1).font(.headline)
+
+            // Section milieu
+            HStack { Text(UIStrings.Game.middleSection).font(.headline); Spacer() }
+            Text(UIStrings.Game.max)
+            Text(UIStrings.Game.min)
+            Text(UIStrings.Game.total2).font(.headline)
+
+            // Section basse
+            HStack { Text(UIStrings.Game.bottomSection).font(.headline); Spacer() }
+            Text(UIStrings.Game.brelan)
+            if game.enableChance { Text(UIStrings.Game.chance) }
+            Text(UIStrings.Game.full)
+            Text(UIStrings.Game.suite)
+            if game.enableSmallStraight { Text(UIStrings.Game.petiteSuite) }
+            Text(UIStrings.Game.carre)
+            Text(UIStrings.Game.yams)
+            if extraYamsIsEnabled { Text("Prime Yams supplémentaire") }
+            Text(UIStrings.Game.total3).font(.headline)
+
+            // Total général
+            Text(UIStrings.Game.totalAll).font(.headline).padding(.top, 6)
+        }
+        .frame(width: labelColumnWidth, alignment: .leading)
+        .font(.body)
+    }
+
+    private func playersColumnsHeader() -> some View {
+        HStack(spacing: 0) {
             ForEach(displayPlayerIDs, id: \.self) { pid in
                 let name = allPlayers.first(where: { $0.id == pid })?.nickname ?? "—"
                 Text(name)
                     .font(.footnote.weight(.semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                    .frame(maxWidth: .infinity)
+                    .frame(minWidth: minCellWidth, maxWidth: .infinity)
                     .padding(.vertical, 6)
                     .background((game.activePlayerID == pid) ? Color.yellow.opacity(0.28) : Color.gray.opacity(0.12))
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .padding(.horizontal, 2)
-                    .contentShape(Rectangle())               // ← zone cliquable
-                    .opacity(canChangePlayerByTap ? 1.0 : 0.45)     // 👈 indice visuel
-       
-                    .onTapGesture { setActivePlayer(pid) }    // ← activer le joueur
+                    .contentShape(Rectangle())
+                    .opacity(canChangePlayerByTap ? 1.0 : 0.45)
+                    .onTapGesture { setActivePlayer(pid) }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.bottom, 4)
     }
 
-    // MARK: - Grid
-    @ViewBuilder private func grid() -> some View {
+    private func playersColumnsBody() -> some View {
         VStack(spacing: 8) {
-            columnsHeader() // étiquettes au-dessus des colonnes (cliquables)
-            sectionUpper()
-            sectionMiddle()
-            sectionBottom()
-            totalsRow(label: UIStrings.Game.totalAll, valueForPlayer: totalAllText)
+            playersColumnsHeader()
+
+            // Section haute
+            Color.clear.frame(height: 0)
+            pickerRowPlayersOnly(allowedValues: allowed(for: 1), label: UIStrings.Game.ones, keyPath: \.ones)
+            pickerRowPlayersOnly(allowedValues: allowed(for: 2), label: UIStrings.Game.twos, keyPath: \.twos)
+            pickerRowPlayersOnly(allowedValues: allowed(for: 3), label: UIStrings.Game.threes, keyPath: \.threes)
+            pickerRowPlayersOnly(allowedValues: allowed(for: 4), label: UIStrings.Game.fours, keyPath: \.fours)
+            pickerRowPlayersOnly(allowedValues: allowed(for: 5), label: UIStrings.Game.fives, keyPath: \.fives)
+            pickerRowPlayersOnly(allowedValues: allowed(for: 6), label: UIStrings.Game.sixes, keyPath: \.sixes)
+            totalsRowPlayersOnly(valueForPlayer: total1Text)
+
+            // Section milieu
+            Color.clear.frame(height: 0)
+            numericRowPlayersOnly(keyPath: \.maxVals, label: UIStrings.Game.max)
+            numericRowPlayersOnly(keyPath: \.minVals, label: UIStrings.Game.min)
+            totalsRowPlayersOnly(valueForPlayer: total2Text)
+
+            // Section basse
+            Color.clear.frame(height: 0)
+            numericRowPlayersOnly(keyPath: \.brelan,
+                                  label: UIStrings.Game.brelan,
+                                  validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleBrelan) },
+                                  displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleBrelan) })
+            if game.enableChance {
+                numericRowPlayersOnly(keyPath: \.chance,
+                                      label: UIStrings.Game.chance,
+                                      validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleChance) },
+                                      displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleChance) })
+            }
+            numericRowPlayersOnly(keyPath: \.full,
+                                  label: UIStrings.Game.full,
+                                  validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleFull) },
+                                  displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleFull) })
+
+            pickerRowPlayersOnly(allowedValues: [0,15,20],
+                                 label: UIStrings.Game.suite,
+                                 valueToText: GDV_Helpers.displaySuiteValue,
+                                 keyPath: \.suite)
+
+            if game.enableSmallStraight {
+                pickerRowPlayersOnly(allowedValues: [0,1],
+                                     label: UIStrings.Game.petiteSuite,
+                                     valueToText: GDV_Helpers.displayPetiteSuiteValue,
+                                     keyPath: \.petiteSuite)
+            }
+
+            numericRowPlayersOnly(keyPath: \.carre,
+                                  label: UIStrings.Game.carre,
+                                  validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleCarre) },
+                                  displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleCarre) })
+
+            numericRowPlayersOnly(keyPath: \.yams,
+                                  label: UIStrings.Game.yams,
+                                  validator: { sanitizeYamsForSnapshot($0) },
+                                  displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleYams) })
+
+            if extraYamsIsEnabled {
+                extraYamsRowPlayersOnly()
+            }
+
+            totalsRowPlayersOnly(valueForPlayer: total3Text)
+            totalsRowPlayersOnly(valueForPlayer: totalAllText)
                 .padding(.top, 6)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // helpers
-    private func allowed(for face: Int) -> [Int] { Validators.allowedUpperValues(face: face) }
-
-    private func valueBinding(_ sc: Binding<Scorecard>, _ keyPath: WritableKeyPath<Scorecard, [Int]>, _ col: Int) -> Binding<Int> {
-        Binding<Int>(
-            get: {
-                let arr = sc.wrappedValue[keyPath: keyPath]
-                return (col < arr.count && col >= 0) ? arr[col] : -1
-            },
-            set: { newVal in
-                var arr = sc.wrappedValue[keyPath: keyPath]
-                if col < arr.count && col >= 0 {
-                    arr[col] = newVal
-                    sc.wrappedValue[keyPath: keyPath] = arr
-                }
-            }
-        )
-    }
-    
-    private func yamsAlreadyScored(_ sc: Scorecard, col: Int) -> Bool {
-        guard sc.yams.indices.contains(col) else { return false }
-        return sc.yams[col] > 0
+    // MARK: - Lignes compactes (≤4 joueurs)
+    private func rowUpper(label: String, face: Int, keyPath: WritableKeyPath<Scorecard, [Int]>) -> some View {
+        HStack(spacing: 0) {
+            Text(label).frame(width: labelColumnWidth, alignment: .leading)
+            pickerRowPlayersOnly(allowedValues: allowed(for: face), label: label, keyPath: keyPath)
+        }
     }
 
-    private var extraYamsIsEnabled: Bool {
-        game.enableExtraYamsBonus && game.notation.extraYamsBonusValue > 0
+    private func rowMaxMin(label: String, keyPath: WritableKeyPath<Scorecard, [Int]>) -> some View {
+        HStack(spacing: 0) {
+            Text(label).frame(width: labelColumnWidth, alignment: .leading)
+            numericRowPlayersOnly(keyPath: keyPath, label: label)
+        }
     }
 
-    // MARK: - Rows
+    private func rowBottom(label: String,
+                           keyPath: WritableKeyPath<Scorecard, [Int]>,
+                           validator: ((Int?) -> Int)? = nil,
+                           displayMap: ((Int) -> String)? = nil) -> some View {
+        HStack(spacing: 0) {
+            Text(label).frame(width: labelColumnWidth, alignment: .leading)
+            numericRowPlayersOnly(keyPath: keyPath, label: label, validator: validator, displayMap: displayMap)
+        }
+    }
 
-    private func pickerRow(label: String, face: Int, keyPath: WritableKeyPath<Scorecard, [Int]>) -> some View {
-        HStack {
-            Text(label).frame(width: 110, alignment: .leading)
+    // MARK: - Rows (players only)
+    private func numericRowPlayersOnly(keyPath: WritableKeyPath<Scorecard, [Int]>,
+                                       label: String,
+                                       validator: ((Int?) -> Int)? = nil,
+                                       displayMap: ((Int) -> String)? = nil) -> some View {
+        HStack(spacing: 0) {
             ForEach(displayPlayerIDs, id: \.self) { pid in
                 if let playerIdx = scorecardIndexByPlayerID[pid] {
                     let scBinding = $game.scorecards[playerIdx]
                     let isLocked  = scBinding.wrappedValue.isLocked(col: scoreColumnIndex, key: label)
                     let binding   = valueBinding(scBinding, keyPath, scoreColumnIndex)
 
-                    Menu {
-                        Picker("Valeur", selection: binding) {
-                            ForEach([-1] + allowed(for: face), id: \.self) { v in
-                                Text(v == -1 ? UIStrings.Common.dash : String(v)).tag(v)
+                    let cfg = NumericRow.Config(
+                        value: binding,
+                        isLocked: isLocked,
+                        isActive: isCellEnabled(for: pid),
+                        validator: { newVal in
+                            let idx = activeScorecardIndex ?? playerIdx
+                            if keyPath == \Scorecard.maxVals {
+                                let currentMin = game.scorecards[idx].minVals[scoreColumnIndex]
+                                return ValidationEngine.sanitizeMiddleMax(newVal,
+                                                                          currentMin: (currentMin >= 0 ? currentMin : nil),
+                                                                          strictGreater: (game.notation.middleMode == .bonusGate))
+                            } else if keyPath == \Scorecard.minVals {
+                                let currentMax = game.scorecards[idx].maxVals[scoreColumnIndex]
+                                return ValidationEngine.sanitizeMiddleMin(newVal,
+                                                                          currentMax: (currentMax >= 0 ? currentMax : nil),
+                                                                          strictGreater: (game.notation.middleMode == .bonusGate))
+                            } else if let v = validator?(newVal) {
+                                return v
+                            } else {
+                                return newVal ?? -1
                             }
-                        }
-                    } label: {
-                        Text(binding.wrappedValue == -1 ? UIStrings.Common.dash : String(binding.wrappedValue))
-                            .frame(maxWidth: .infinity)
-                            .padding(8)
-                            .background(cellBackground(col: playerIdx, isOpen: binding.wrappedValue == -1))
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                    }
-                    .disabled(isLocked || !isCellEnabled(for: pid))
-                    .contextMenu {
-                        Button(UIStrings.Common.validate) {
-                            scBinding.wrappedValue.setLocked(true, col: scoreColumnIndex, key: label)
-                            try? context.save()
-                        }
-                        Button(UIStrings.Common.clear) {
-                            var arr = scBinding.wrappedValue[keyPath: keyPath]
-                            if scoreColumnIndex < arr.count && scoreColumnIndex >= 0 {
-                                arr[scoreColumnIndex] = -1
-                                scBinding.wrappedValue[keyPath: keyPath] = arr
+                        },
+                        displayMap: displayMap,
+                        valueFont: badgeFont,
+                        effectiveFont: cellFont,
+                        contentPadding: cellPadding
+                    )
+
+                    NumericRow(cfg)
+                        .frame(minWidth: minCellWidth, maxWidth: .infinity, alignment: .leading)
+                        .contextMenu {
+                            Button(UIStrings.Common.validate) {
+                                scBinding.wrappedValue.setLocked(true, col: scoreColumnIndex, key: label)
+                                try? context.save()
                             }
+                            Button(UIStrings.Common.clear) { binding.wrappedValue = -1 }
                         }
-                    }
+                        .disabled(isLocked || !isCellEnabled(for: pid))
+                        .padding(.horizontal, 2)
                 }
             }
         }
     }
 
-    private func numericRow(label: String,
-                            keyPath: WritableKeyPath<Scorecard, [Int]>,
-                            figure: FigureKind? = nil,
-                            validator: ((Int?) -> Int)? = nil,
-                            displayMap: ((Int) -> String)? = nil,
-                            valueFont: Font? = nil,
-                            effectiveFont: Font? = nil) -> some View {
-        HStack {
-            if let fig = figure { labelWithTip(label, figure: fig) }
-            else { Text(label).frame(width: 110, alignment: .leading) }
-
-            ForEach(displayPlayerIDs, id: \.self) { pid in
-                if let playerIdx = scorecardIndexByPlayerID[pid] {
-                    let scBinding = $game.scorecards[playerIdx]
-                    let isLocked  = scBinding.wrappedValue.isLocked(col: scoreColumnIndex, key: label)
-                    let binding   = valueBinding(scBinding, keyPath, scoreColumnIndex)
-                    let isOpen    = (binding.wrappedValue == -1)
-
-                    NumericCell(value: binding,
-                                isLocked: isLocked,
-                                isActive: isCellEnabled(for: pid),
-                                validator: { newVal in
-                                    let idx = activeScorecardIndex ?? playerIdx
-                                    if keyPath == \Scorecard.maxVals {
-                                        let currentMin = game.scorecards[idx].minVals[scoreColumnIndex]
-                                        return ValidationEngine.sanitizeMiddleMax(newVal,
-                                                                                  currentMin: (currentMin >= 0 ? currentMin : nil),
-                                                                                  strictGreater: (game.notation.middleMode == .bonusGate))
-                                    } else if keyPath == \Scorecard.minVals {
-                                        let currentMax = game.scorecards[idx].maxVals[scoreColumnIndex]
-                                        return ValidationEngine.sanitizeMiddleMin(newVal,
-                                                                                  currentMax: (currentMax >= 0 ? currentMax : nil),
-                                                                                  strictGreater: (game.notation.middleMode == .bonusGate))
-                                    } else if let v = validator?(newVal) {
-                                        return v
-                                    } else {
-                                        return newVal ?? -1
-                                    }
-                                },
-                                displayMap: displayMap,
-                                valueFont: valueFont,
-                                effectiveFont: effectiveFont)
-                    .padding(8)
-                    .frame(maxWidth: .infinity)
-                    .background(cellBackground(col: playerIdx, isOpen: isOpen))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .contextMenu {
-                        Button(UIStrings.Common.validate) {
-                            scBinding.wrappedValue.setLocked(true, col: scoreColumnIndex, key: label)
-                            try? context.save()
-                        }
-                        Button(UIStrings.Common.clear) { binding.wrappedValue = -1 }
-                    }
-                    .disabled(isLocked || !isCellEnabled(for: pid))
-                }
-            }
-        }
-    }
-
-    private func pickerRowCustom(label: String,
-                                 allowedValues: [Int],
-                                 keyPath: WritableKeyPath<Scorecard, [Int]>,
-                                 figure: FigureKind? = nil,
-                                 valueToText: ((Int) -> String)? = nil) -> some View {
-        HStack {
-            if let fig = figure { labelWithTip(label, figure: fig) }
-            else { Text(label).frame(width: 110, alignment: .leading) }
-
+    private func pickerRowPlayersOnly(allowedValues: [Int],
+                                      label: String,
+                                      valueToText: ((Int) -> String)? = nil,
+                                      keyPath: WritableKeyPath<Scorecard, [Int]>) -> some View {
+        HStack(spacing: 0) {
             ForEach(displayPlayerIDs, id: \.self) { pid in
                 if let playerIdx = scorecardIndexByPlayerID[pid] {
                     let scBinding = $game.scorecards[playerIdx]
@@ -734,8 +793,11 @@ ToolbarItem(placement: .navigationBarLeading) {
                         }
                     } label: {
                         Text(valueToText.map { $0(binding.wrappedValue) } ?? (binding.wrappedValue == -1 ? UIStrings.Common.dash : String(binding.wrappedValue)))
-                            .frame(maxWidth: .infinity)
-                            .padding(8)
+                            .font(cellFont)
+                            .frame(minWidth: minCellWidth, maxWidth: .infinity)
+                            .multilineTextAlignment(.center)
+                            .foregroundColor(.primary)
+                            .padding(cellPadding)
                             .background(cellBackground(col: playerIdx, isOpen: binding.wrappedValue == -1))
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
@@ -747,231 +809,23 @@ ToolbarItem(placement: .navigationBarLeading) {
                         }
                         Button(UIStrings.Common.clear) { binding.wrappedValue = -1 }
                     }
+                    .padding(.horizontal, 2)
                 }
             }
         }
     }
-    
-    @ViewBuilder
-    private func extraYamsRow() -> some View {
-        if extraYamsIsEnabled {
-            HStack {
-                Text("Prime Yams supplémentaire").frame(width: 110, alignment: .leading)
 
-                ForEach(displayPlayerIDs, id: \.self) { pid in
-                    if let playerIdx = scorecardIndexByPlayerID[pid] {
-                        let scBinding = $game.scorecards[playerIdx]
-                        let awarded = scBinding.wrappedValue.extraYamsAwarded[scoreColumnIndex]
-                        let eligible = yamsAlreadyScored(scBinding.wrappedValue, col: scoreColumnIndex)
-                        let isActivePlayer = (game.activePlayerID == pid)
-
-                        Group {
-                            if awarded {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "checkmark.seal.fill")
-                                    Text("+\(game.notation.extraYamsBonusValue)")
-                                    Spacer()
-                                    if isActivePlayer {
-                                        Button(role: .destructive) {
-                                            revokePlayerIdx = playerIdx
-                                            showRevokeYams = true
-                                        } label: {
-                                            Label("Annuler", systemImage: "xmark.circle")
-                                        }
-                                        .buttonStyle(.borderless)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(8)
-                                .background(cellBackground(col: playerIdx, isOpen: false))
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                                .contextMenu {
-                                    Button("Retirer la prime", role: .destructive) {
-                                        revokeExtraYams(for: playerIdx)
-                                    }
-                                }
-                            } else {
-                                if eligible && isActivePlayer {
-                                    Button {
-                                        var arr = scBinding.wrappedValue.extraYamsAwarded
-                                        if scoreColumnIndex >= arr.count {
-                                            arr.append(contentsOf: Array(repeating: false, count: scoreColumnIndex - arr.count + 1))
-                                        }
-                                        arr[scoreColumnIndex] = true
-                                        scBinding.wrappedValue.extraYamsAwarded = arr
-                                        scBinding.wrappedValue.setLocked(true, col: scoreColumnIndex, key: "ExtraYamsBonus")
-                                        try? context.save()
-                                    } label: {
-                                        Text("Attribuer")
-                                            .frame(maxWidth: .infinity)
-                                            .padding(8)
-                                            .background(cellBackground(col: playerIdx, isOpen: true))
-                                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                                    }
-                                    .contextMenu {
-                                        Button("Conditions") {
-                                            tipText = "Prime accordée uniquement si le Yams est déjà validé (≠ 0 et ≠ —)."
-                                            showTip = true
-                                        }
-                                    }
-                                } else {
-                                    Text(UIStrings.Common.dash)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(8)
-                                        .background(cellBackground(col: playerIdx, isOpen: true))
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                                        .help("La prime n’est attribuable qu’après avoir validé la case Yams.")
-                                }
-                            }
-                        }
-                        .disabled(!isActivePlayer)
-                    }
-                }
-            }
-        } else {
-            EmptyView()
-        }
-    }
-
-    private func sanitizeYamsForSnapshot(_ newVal: Int?) -> Int {
-        guard let v = newVal else { return -1 }
-        if v == 0 { return 0 }
-        let bases: Set<Int> = [5, 10, 15, 20, 25, 30]
-        let rule = game.notation.ruleYams
-        switch rule.mode {
-        case .fixed: return rule.fixedValue
-        default:     return bases.contains(v) ? v : -1
-        }
-    }
-
-    // MARK: - Sections
-    private func sectionUpper() -> some View {
-        VStack(spacing: 8) {
-            HStack { Text(UIStrings.Game.upperSection).font(.headline); Spacer() }
-            pickerRow(label: UIStrings.Game.ones,   face: 1, keyPath: \Scorecard.ones)
-            pickerRow(label: UIStrings.Game.twos,   face: 2, keyPath: \Scorecard.twos)
-            pickerRow(label: UIStrings.Game.threes, face: 3, keyPath: \Scorecard.threes)
-            pickerRow(label: UIStrings.Game.fours,  face: 4, keyPath: \Scorecard.fours)
-            pickerRow(label: UIStrings.Game.fives,  face: 5, keyPath: \Scorecard.fives)
-            pickerRow(label: UIStrings.Game.sixes,  face: 6, keyPath: \Scorecard.sixes)
-            totalsRow(label: UIStrings.Game.total1, valueForPlayer: total1Text)
-        }
-    }
-
-    private func sectionMiddle() -> some View {
-        VStack(spacing: 8) {
-            HStack { Text(UIStrings.Game.middleSection).font(.headline); Spacer() }
-            let strict = (game.notation.middleMode == .bonusGate)
-
-            numericRow(label: UIStrings.Game.max,
-                       keyPath: \Scorecard.maxVals,
-                       validator: { newVal in
-                           let idx = activeScorecardIndex ?? 0
-                           let currentMin = game.scorecards[idx].minVals[scoreColumnIndex]
-                           return ValidationEngine.sanitizeMiddleMax(newVal,
-                                                                     currentMin: (currentMin >= 0 ? currentMin : nil),
-                                                                     strictGreater: strict)
-                       })
-
-            numericRow(label: UIStrings.Game.min,
-                       keyPath: \Scorecard.minVals,
-                       validator: { newVal in
-                           let idx = activeScorecardIndex ?? 0
-                           let currentMax = game.scorecards[idx].maxVals[scoreColumnIndex]
-                           return ValidationEngine.sanitizeMiddleMin(newVal,
-                                                                     currentMax: (currentMax >= 0 ? currentMax : nil),
-                                                                     strictGreater: strict)
-                       })
-            totalsRow(label: UIStrings.Game.total2, valueForPlayer: total2Text)
-        }
-    }
-
-    private func sectionBottom() -> some View {
-        VStack(spacing: 8) {
-            HStack { Text(UIStrings.Game.bottomSection).font(.headline); Spacer() }
-
-            numericRow(label: UIStrings.Game.brelan,
-                       keyPath: \Scorecard.brelan,
-                       figure: .brelan,
-                       validator: { newVal in
-                           ValidationEngine.sanitizeBottom(newVal, rule: game.notation.ruleBrelan)
-                       },
-                       displayMap: { v in
-                           ValidationEngine.displayForBottom(stored: v, rule: game.notation.ruleBrelan)
-                       })
-
-            if game.enableChance {
-                numericRow(label: UIStrings.Game.chance,
-                           keyPath: \Scorecard.chance,
-                           figure: .chance,
-                           validator: { newVal in
-                               ValidationEngine.sanitizeBottom(newVal, rule: game.notation.ruleChance)
-                           },
-                           displayMap: { v in
-                               ValidationEngine.displayForBottom(stored: v, rule: game.notation.ruleChance)
-                           })
-            }
-
-            numericRow(label: UIStrings.Game.full,
-                       keyPath: \Scorecard.full,
-                       figure: .full,
-                       validator: { newVal in
-                           ValidationEngine.sanitizeBottom(newVal, rule: game.notation.ruleFull)
-                       },
-                       displayMap: { v in
-                           ValidationEngine.displayForBottom(stored: v, rule: game.notation.ruleFull)
-                       })
-
-            pickerRowCustom(label: UIStrings.Game.suite,
-                            allowedValues: [0, 15, 20],
-                            keyPath: \Scorecard.suite,
-                            figure: .suiteBig,
-                            valueToText: displaySuiteValue)
-
-            if game.enableSmallStraight {
-                pickerRowCustom(label: UIStrings.Game.petiteSuite,
-                                allowedValues: [0, 1],
-                                keyPath: \Scorecard.petiteSuite,
-                                figure: .petiteSuite,
-                                valueToText: displayPetiteSuiteValue)
-            }
-
-            numericRow(label: UIStrings.Game.carre,
-                       keyPath: \Scorecard.carre,
-                       figure: .carre,
-                       validator: { newVal in
-                           ValidationEngine.sanitizeBottom(newVal, rule: game.notation.ruleCarre)
-                       },
-                       displayMap: { v in
-                           ValidationEngine.displayForBottom(stored: v, rule: game.notation.ruleCarre)
-                       })
-
-            numericRow(label: UIStrings.Game.yams,
-                       keyPath: \Scorecard.yams,
-                       figure: .yams,
-                       validator: { newVal in sanitizeYamsForSnapshot(newVal) },
-                       displayMap: { v in
-                           ValidationEngine.displayForBottom(stored: v, rule: game.notation.ruleYams)
-                       },
-                       valueFont: .caption,
-                       effectiveFont: .headline)
-
-            extraYamsRow()
-            totalsRow(label: UIStrings.Game.total3, valueForPlayer: total3Text)
-        }
-    }
-
-    // MARK: - Totals helpers
+    // MARK: - Totaux
     private func middleCanCompute(playerIdx: Int) -> Bool {
         let sc = game.scorecards[playerIdx]
         switch game.notation.middleMode {
         case .multiplier:
             return sc.maxVals[scoreColumnIndex] >= 0
-                && sc.minVals[scoreColumnIndex] >= 0
-                && sc.ones[scoreColumnIndex]    >= 0
+            &&     sc.minVals[scoreColumnIndex] >= 0
+            &&     sc.ones[scoreColumnIndex]    >= 0
         case .bonusGate:
             return sc.maxVals[scoreColumnIndex] >= 0
-                && sc.minVals[scoreColumnIndex] >= 0
+            &&     sc.minVals[scoreColumnIndex] >= 0
         }
     }
 
@@ -993,7 +847,7 @@ ToolbarItem(placement: .navigationBarLeading) {
 
     private func totalAllText(_ playerIdx: Int) -> String {
         let sc = game.scorecards[playerIdx]
-        let upper = StatsEngine.upperTotal(sc: sc, game: game, col: scoreColumnIndex)
+        let upper  = StatsEngine.upperTotal(sc: sc, game: game, col: scoreColumnIndex)
         let bottom = StatsEngine.bottomTotal(sc: sc, game: game, col: scoreColumnIndex)
         let middle = middleCanCompute(playerIdx: playerIdx)
             ? StatsEngine.middleTotal(sc: sc, game: game, col: scoreColumnIndex)
@@ -1009,129 +863,196 @@ ToolbarItem(placement: .navigationBarLeading) {
     }
 
     @ViewBuilder
-    private func totalsRow(label: String, valueForPlayer: @escaping (_ playerIdx: Int) -> String) -> some View {
-        HStack {
-            Text(label).font(.headline).frame(width: 110, alignment: .leading)
+    private func totalsRowPlayersOnly(valueForPlayer: @escaping (_ playerIdx: Int) -> String) -> some View {
+        HStack(spacing: 0) {
             ForEach(displayPlayerIDs, id: \.self) { pid in
                 if let playerIdx = scorecardIndexByPlayerID[pid] {
                     let text = valueForPlayer(playerIdx)
                     Text(text)
                         .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(8)
+                        .frame(minWidth: minCellWidth, maxWidth: .infinity)
+                        .padding(cellPadding)
                         .background(cellBackground(col: playerIdx, isOpen: (text == UIStrings.Common.dash || text == "—")))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .padding(.horizontal, 2)
                 }
             }
         }
     }
 
-    // MARK: - UI bits
     @ViewBuilder
-    private func labelWithTip(_ title: String, figure: FigureKind? = nil) -> some View {
-        HStack(spacing: 6) {
-            Text(title)
-            if let fig = figure {
-                Button {
-                    tipText = StatsEngine.figureTooltip(notation: game.notation, figure: fig)
-                    showTip = true
-                } label: { Image(systemName: "questionmark.circle") }
-                .buttonStyle(.plain)
-            }
-        }
-        .frame(width: 110, alignment: .leading)
-    }
-
-    private func displaySuiteValue(_ v: Int) -> String {
-        switch v {
-        case -1: return UIStrings.Common.dash
-        case 0:  return UIStrings.Game.barred0
-        case 15: return UIStrings.Game.suite15
-        case 20: return UIStrings.Game.suite20
-        default: return String(v)
+    private func totalsRow(label: String, valueForPlayer: @escaping (_ playerIdx: Int) -> String) -> some View {
+        HStack(spacing: 0) {
+            Text(label).font(.headline).frame(width: labelColumnWidth, alignment: .leading)
+            totalsRowPlayersOnly(valueForPlayer: valueForPlayer)
         }
     }
 
-    private func displayPetiteSuiteValue(_ v: Int) -> String {
-        switch v {
-        case -1: return UIStrings.Common.dash
-        case 0:  return UIStrings.Game.barred0
-        case 1:  return UIStrings.Game.petiteLbl
-        default: return String(v)
-        }
+    // MARK: - Extra Yams
+    private var extraYamsIsEnabled: Bool { game.enableExtraYamsBonus }
+
+    private func yamsAlreadyScored(_ sc: Scorecard, col: Int) -> Bool {
+        guard sc.yams.indices.contains(col) else { return false }
+        return sc.yams[col] > 0
     }
 
-    // MARK: - NumericCell
-    private struct NumericCell: View {
-        @Binding var value: Int
-        let isLocked: Bool
-        let isActive: Bool
-        let validator: ((Int?) -> Int)?
-        let displayMap: ((Int) -> String)?
-        let valueFont: Font?
-        let effectiveFont: Font?
+    @ViewBuilder
+    private func extraYamsRowPlayersOnly() -> some View {
+        HStack(spacing: 0) {
+            ForEach(displayPlayerIDs, id: \.self) { pid in
+                if let playerIdx = scorecardIndexByPlayerID[pid] {
+                    let scBinding = $game.scorecards[playerIdx]
+                    let awarded = scBinding.wrappedValue.extraYamsAwarded[scoreColumnIndex]
+                    let eligible = yamsAlreadyScored(scBinding.wrappedValue, col: scoreColumnIndex)
+                    let isActivePlayer = (game.activePlayerID == pid)
 
-        @State private var text: String = ""
-        @FocusState private var isFocused: Bool
-
-        var body: some View {
-            ZStack(alignment: .trailing) {
-                TextField(UIStrings.Common.dash, text: $text)
-                    .keyboardType(.numberPad)
-                    .submitLabel(.done)
-                    .onSubmit { commit() }
-                    .font(valueFont)
-                    .focused($isFocused)
-                    .onAppear { text = (value >= 0) ? String(value) : "" }
-                    .onChange(of: value) { _, newVal in
-                        if !isFocused {
-                            let t = (newVal >= 0) ? String(newVal) : ""
-                            if t != text { text = t }
-                        }
-                    }
-                    .onChange(of: text) { _, newText in
-                        let filtered = newText.filter { $0.isNumber }
-                        if filtered != newText { text = filtered; return }
-                        let intVal = Int(filtered)
-                        if isFocused {
-                            let soft = intVal.map { max(0, min(99, $0)) }
-                            if soft != value { value = soft ?? -1 }
+                    Group {
+                        if awarded {
+                            HStack(spacing: 8) {
+                                Image(systemName: "checkmark.seal.fill")
+                                Text("+\(game.notation.extraYamsBonusValue)")
+                                Spacer()
+                                if isActivePlayer {
+                                    Button(role: .destructive) {
+                                        revokePlayerIdx = playerIdx
+                                        showRevokeYams = true
+                                    } label: {
+                                        Label("Annuler", systemImage: "xmark.circle")
+                                    }
+                                    .buttonStyle(.borderless)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(cellPadding)
+                            .background(cellBackground(col: playerIdx, isOpen: false))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .contextMenu {
+                                Button("Retirer la prime", role: .destructive) {
+                                    revokeExtraYams(for: playerIdx)
+                                }
+                            }
                         } else {
-                            applyValidation(intVal)
+                            if eligible && isActivePlayer {
+                                Button {
+                                    var arr = scBinding.wrappedValue.extraYamsAwarded
+                                    if scoreColumnIndex >= arr.count {
+                                        arr.append(contentsOf: Array(repeating: false, count: scoreColumnIndex - arr.count + 1))
+                                    }
+                                    arr[scoreColumnIndex] = true
+                                    scBinding.wrappedValue.extraYamsAwarded = arr
+                                    scBinding.wrappedValue.setLocked(true, col: scoreColumnIndex, key: "ExtraYamsBonus")
+                                    try? context.save()
+                                } label: {
+                                    Text("Attribuer")
+                                        .frame(maxWidth: .infinity)
+                                        .padding(cellPadding)
+                                        .background(cellBackground(col: playerIdx, isOpen: true))
+                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                }
+                                .contextMenu {
+                                    Button("Conditions") {
+                                        tipText = "Prime accordée uniquement si le Yams est déjà validé (≠ 0 et ≠ —)."
+                                        showTip = true
+                                    }
+                                }
+                            } else {
+                                Text(UIStrings.Common.dash)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(cellPadding)
+                                    .background(cellBackground(col: playerIdx, isOpen: true))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    .help("La prime n’est attribuable qu’après avoir validé la case Yams.")
+                            }
                         }
                     }
-                
-                    .onChange(of: isFocused) { was, now in
-                        if was && !now { commit() }
-                    }
-                
-
-                if let map = displayMap, value >= 0 {
-                    let eff = map(value)
-                    if eff != String(value) {
-                        Text(eff)
-                            .font(effectiveFont ?? .caption2)
-                            .padding(.trailing, 8)
-                            .padding(.vertical, 2)
-                            .background(Color.black.opacity(0.06))
-                            .clipShape(Capsule())
-                    }
+                    .disabled(!isActivePlayer)
+                    .padding(.horizontal, 2)
                 }
             }
-            .disabled(isLocked || !isActive)
-        }
-
-        private func commit() {
-            isFocused = false
-            let intVal = Int(text)
-            applyValidation(intVal)
-            text = (value >= 0) ? String(value) : ""
-        }
-
-        private func applyValidation(_ intVal: Int?) {
-            let sanitized = validator?(intVal) ?? (intVal ?? -1)
-            if sanitized != value { value = sanitized }
         }
     }
-}
 
+    private func sanitizeYamsForSnapshot(_ newVal: Int?) -> Int {
+        guard let v = newVal else { return -1 }
+        if v == 0 { return 0 }
+        let bases: Set<Int> = [5, 10, 15, 20, 25, 30]
+        let rule = game.notation.ruleYams
+        switch rule.mode {
+        case .fixed: return rule.fixedValue
+        default:     return bases.contains(v) ? v : -1
+        }
+    }
+
+    // MARK: - Helpers communs
+    private func allowed(for face: Int) -> [Int] { Validators.allowedUpperValues(face: face) }
+
+    private func valueBinding(_ sc: Binding<Scorecard>, _ keyPath: WritableKeyPath<Scorecard, [Int]>, _ col: Int) -> Binding<Int> {
+        Binding<Int>(
+            get: {
+                let arr = sc.wrappedValue[keyPath: keyPath]
+                return (col < arr.count && col >= 0) ? arr[col] : -1
+            },
+            set: { newVal in
+                var arr = sc.wrappedValue[keyPath: keyPath]
+                if col < arr.count && col >= 0 {
+                    arr[col] = newVal
+                    sc.wrappedValue[keyPath: keyPath] = arr
+                }
+            }
+        )
+    }
+
+
+    // MARK: - DEBUG
+    #if DEBUG
+    private func ensureCapacity(_ arr: inout [Int], at idx: Int) {
+        if idx >= arr.count { arr.append(contentsOf: Array(repeating: -1, count: idx - arr.count + 1)) }
+    }
+    private func debugSetValue(playerIdx: Int, keyPath: WritableKeyPath<Scorecard, [Int]>, value: Int) {
+        var arr = game.scorecards[playerIdx][keyPath: keyPath]
+        ensureCapacity(&arr, at: scoreColumnIndex)
+        arr[scoreColumnIndex] = value
+        game.scorecards[playerIdx][keyPath: keyPath] = arr
+    }
+    private func debugFillAllRequiredAndComplete(showNotification: Bool = false) {
+        for i in game.scorecards.indices {
+            // haute
+            debugSetValue(playerIdx: i, keyPath: \.ones,   value: 0)
+            debugSetValue(playerIdx: i, keyPath: \.twos,   value: 0)
+            debugSetValue(playerIdx: i, keyPath: \.threes, value: 0)
+            debugSetValue(playerIdx: i, keyPath: \.fours,  value: 0)
+            debugSetValue(playerIdx: i, keyPath: \.fives,  value: 0)
+            debugSetValue(playerIdx: i, keyPath: \.sixes,  value: 0)
+            // milieu
+            debugSetValue(playerIdx: i, keyPath: \.maxVals, value: 0)
+            debugSetValue(playerIdx: i, keyPath: \.minVals, value: 0)
+            // basse
+            debugSetValue(playerIdx: i, keyPath: \.brelan, value: 0)
+            if game.enableChance { debugSetValue(playerIdx: i, keyPath: \.chance, value: 0) }
+            debugSetValue(playerIdx: i, keyPath: \.full,  value: 0)
+            debugSetValue(playerIdx: i, keyPath: \.suite, value: 0)
+            if game.enableSmallStraight { debugSetValue(playerIdx: i, keyPath: \.petiteSuite, value: 0) }
+            debugSetValue(playerIdx: i, keyPath: \.carre, value: 0)
+            debugSetValue(playerIdx: i, keyPath: \.yams,  value: 0)
+        }
+        game.statusOrDefault = .completed
+        game.endedAt = Date()
+        try? context.save()
+
+        let ranking: [(String, Int)] = orderedPlayers
+            .map { ($0.nickname, totalScore(for: $0.id)) }
+            .sorted { $0.1 > $1.1 }
+
+        if showNotification {
+            NotificationManager.postEndGame(
+                winnerName: ranking.first?.0 ?? "—",
+                gameName: game.name,
+                rankings: ranking
+            )
+        } else {
+            endGameEntries = ranking.map { .init(name: $0.0, score: $0.1) }
+            showCongrats = true
+        }
+    }
+    #endif
+}
