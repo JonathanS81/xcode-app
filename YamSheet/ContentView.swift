@@ -10,8 +10,14 @@ struct ContentView: View {
                 .tabItem { Label(UIStrings.Common.players, systemImage: "person.3") }
             NotationsListView()
                 .tabItem { Label(UIStrings.Common.notations, systemImage: "text.badge.star") }
+            StatisticsTab()
+                .tabItem {
+                    Image(systemName: "chart.bar")
+                    Text("Stats")
+                }
             SettingsView()
                 .tabItem { Label(UIStrings.Common.settings, systemImage: "gear") }
+            
         }
     }
 }

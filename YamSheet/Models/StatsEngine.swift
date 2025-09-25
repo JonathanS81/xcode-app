@@ -1,3 +1,11 @@
+//
+//  Game+TurnEngine.swift
+//  YamSheet
+//
+//  Created by Jonathan Sportiche  on 03/09/2025.
+//
+
+
 import Foundation
 
 enum FigureKind {
@@ -15,12 +23,9 @@ struct StatsEngine {
         }
         return game.notation.extraYamsBonusValue
     }
-    
-    
+
     // -1 => non rempli ; 0 => barré ; sinon valeur
     static func norm(_ v: Int) -> Int { max(0, v) }
-    
-    
 
     // MARK: - Upper
     static func upperTotal(sc: Scorecard, game: Game, col: Int) -> Int {
@@ -60,18 +65,20 @@ struct StatsEngine {
         }
     }
 
-    private static func suiteBigScore(raw: Int, n: NotationSnapshot) -> Int {
-        // Convention d’entrée : 0 = barré, 15 = 1–5, 20 = 2–6
-        if raw <= 0 { return 0 }
-        switch n.suiteBigMode {
-        case .singleFixed:
-            return n.suiteBigFixed
-        case .splitFixed:
-            if raw == 15 { return n.suiteBigFixed1to5 }
-            if raw == 20 { return n.suiteBigFixed2to6 }
-            // par sécurité, on retourne la valeur "single" si autre
-            return n.suiteBigFixed
-        }
+    private static func val(_ arr: [Int], _ col: Int) -> Int {
+        guard col >= 0, col < arr.count else { return 0 }
+        let v = arr[col]
+        return v >= 0 ? v : 0
+    }
+
+    /// Score pour la grande suite: on utilise la valeur **stockée**, pas un mapping 15/20
+    static func suiteScore(sc: Scorecard, col: Int) -> Int {
+        return val(sc.suite, col)
+    }
+
+    /// Score pour la petite suite: idem, valeur **stockée** (0 ou la valeur définie dans la Notation)
+    static func petiteSuiteScore(sc: Scorecard, col: Int) -> Int {
+        return val(sc.petiteSuite, col)
     }
 
     static func bottomTotal(sc: Scorecard, game: Game, col: Int) -> Int {
@@ -82,10 +89,11 @@ struct StatsEngine {
                             ? applyFigureRule(sc.chance[col],    rule: n.ruleChance)
                             : 0
         let full         = applyFigureRule(sc.full[col],         rule: n.ruleFull)
-        let suite        = applyFigureRule(sc.suite[col],        rule: n.ruleSuite)
-        let petiteSuite  = game.enableSmallStraight
-                            ? applyFigureRule(sc.petiteSuite[col], rule: n.rulePetiteSuite)
-                            : 0
+
+        // Les valeurs de Suite/Petite suite sont désormais *déjà finales* (0 ou valeur de la Notation)
+        let suite        = suiteScore(sc: sc, col: col)
+        let petiteSuite  = game.enableSmallStraight ? petiteSuiteScore(sc: sc, col: col) : 0
+
         let carre        = applyFigureRule(sc.carre[col],        rule: n.ruleCarre)
         let yams         = applyFigureRule(sc.yams[col],         rule: n.ruleYams)
 
@@ -93,7 +101,6 @@ struct StatsEngine {
         let extra        = extraYamsBonusAmount(sc: sc, game: game, col: col)
 
         return brelan + chance + full + suite + petiteSuite + carre + yams + extra
-        
     }
 
     static func total(sc: Scorecard, game: Game, col: Int) -> Int {
@@ -141,4 +148,3 @@ struct StatsEngine {
         }
     }
 }
-

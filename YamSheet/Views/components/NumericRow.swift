@@ -19,6 +19,7 @@ struct NumericRow: View {
         var valueFont: Font? = nil                      // font de la valeur brute (badge)
         var effectiveFont: Font? = nil                  // font de la valeur centrale (effective)
         var contentPadding: CGFloat = 8                 // padding interne dynamique
+        var allowedRange: ClosedRange<Int> = 5...30
     }
 
     private let cfg: Config
@@ -111,7 +112,12 @@ struct NumericRow: View {
     private func commit() {
         // Validation différée au commit
         let intVal = Int(text)
-        let sanitized = cfg.validator?(intVal) ?? (intVal ?? -1)
+        var sanitized = cfg.validator?(intVal) ?? (intVal ?? -1)
+        // Clamp final via allowedRange (uniquement pour les valeurs remplies)
+        if sanitized >= 0 {
+            if sanitized < cfg.allowedRange.lowerBound { sanitized = cfg.allowedRange.lowerBound }
+            if sanitized > cfg.allowedRange.upperBound { sanitized = cfg.allowedRange.upperBound }
+        }
         cfg.value.wrappedValue = sanitized
         syncFromBinding() // refléter la valeur stockée
     }
