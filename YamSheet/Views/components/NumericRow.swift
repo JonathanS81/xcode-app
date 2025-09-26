@@ -20,6 +20,8 @@ struct NumericRow: View {
         var effectiveFont: Font? = nil                  // font de la valeur centrale (effective)
         var contentPadding: CGFloat = 8                 // padding interne dynamique
         var allowedRange: ClosedRange<Int> = 5...30
+        var allowZero: Bool = false
+        var onInvalidInput: ((Int) -> Void)? = nil
     }
 
     private let cfg: Config
@@ -111,14 +113,34 @@ struct NumericRow: View {
     // MARK: - Commit / Sync
     private func commit() {
         // Validation différée au commit
+        let previous = cfg.value.wrappedValue
         let intVal = Int(text)
-        var sanitized = cfg.validator?(intVal) ?? (intVal ?? -1)
-        // Clamp final via allowedRange (uniquement pour les valeurs remplies)
-        if sanitized >= 0 {
-            if sanitized < cfg.allowedRange.lowerBound { sanitized = cfg.allowedRange.lowerBound }
-            if sanitized > cfg.allowedRange.upperBound { sanitized = cfg.allowedRange.upperBound }
+        var validated = cfg.validator?(intVal) ?? (intVal ?? -1)
+
+        // Si l'utilisateur saisit une valeur > 0 mais que le validator la rejette (== -1),
+        // on n'auto-corrige pas : on notifie et on restaure la valeur précédente.
+        if let raw = intVal, raw > 0, cfg.validator != nil, validated == -1 {
+            cfg.onInvalidInput?(raw)
+            // Restaure la valeur précédente sans modification
+            cfg.value.wrappedValue = previous
+            syncFromBinding()
+            return
         }
-        cfg.value.wrappedValue = sanitized
+
+        // Autoriser explicitement 0 (barré) si demandé par la config
+        if validated == 0, cfg.allowZero {
+            cfg.value.wrappedValue = 0
+            syncFromBinding()
+            return
+        }
+
+        // Clamp final via allowedRange (uniquement pour les valeurs strictement positives)
+        if validated > 0 {
+            if validated < cfg.allowedRange.lowerBound { validated = cfg.allowedRange.lowerBound }
+            if validated > cfg.allowedRange.upperBound { validated = cfg.allowedRange.upperBound }
+        }
+
+        cfg.value.wrappedValue = validated
         syncFromBinding() // refléter la valeur stockée
     }
 

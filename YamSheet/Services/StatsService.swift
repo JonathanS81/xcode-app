@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import SwiftData
 
 enum StatsService {
 
@@ -88,6 +87,32 @@ enum StatsService {
             )
         }
         .sorted { $0.bestScore > $1.bestScore }
+    }
+
+
+    // MARK: - Extra Yams (primes)
+
+    /// Nombre de primes de Yams par joueur (compte les parties où une prime a été attribuée au moins une fois).
+    /// Hypothèse de modèle: `Scorecard.extraYams` contient, par colonne, un entier > 0 si une prime a été attribuée.
+    static func yamsPrimesByPlayer(games: [Game], col: Int = 0) -> [UUID: Int] {
+        let completed = games.filter { $0.statusOrDefault == .completed }
+        var acc: [UUID: Int] = [:]
+        for g in completed {
+            for sc in g.scorecards {
+                // Safe lookup via reflection: if Scorecard has a property named "extraYams" of type [Int], use it.
+                let mirror = Mirror(reflecting: sc)
+                let extra: [Int]? = mirror.children.first(where: { $0.label == "extraYams" })?.value as? [Int]
+                if let arr = extra, col < arr.count, arr[col] > 0 {
+                    acc[sc.playerID, default: 0] += 1
+                }
+            }
+        }
+        return acc
+    }
+
+    /// Nombre de primes de Yams pour un joueur donné.
+    static func yamsPrimesCount(for playerID: UUID, games: [Game], col: Int = 0) -> Int {
+        yamsPrimesByPlayer(games: games, col: col)[playerID] ?? 0
     }
 
     // MARK: - Stats globales

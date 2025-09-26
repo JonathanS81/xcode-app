@@ -842,8 +842,15 @@ struct GameDetailView: View {
                                 return ValidationEngine.sanitizeMiddleMin(newVal,
                                                                           currentMax: (currentMax >= 0 ? currentMax : nil),
                                                                           strictGreater: (game.notation.middleMode == .bonusGate))
-                            } else if let v = validator?(newVal) {
-                                return v
+                            } else if let fn = validator {
+                                let raw = newVal ?? -1
+                                let sanitized = fn(newVal)
+                                // Si l'utilisateur a saisi une valeur positive et que la "sanitization" la modifie,
+                                // on signale une entrée invalide (-> NumericRow affichera l'alerte via onInvalidInput).
+                                if raw > 0 && sanitized != raw {
+                                    return -1
+                                }
+                                return sanitized
                             } else {
                                 return newVal ?? -1
                             }
@@ -852,7 +859,18 @@ struct GameDetailView: View {
                         valueFont: badgeFont,
                         effectiveFont: cellFont,
                         contentPadding: cellPadding,
-                        allowedRange: (label == UIStrings.Game.carre ? (4...30) : (5...30))
+                        allowedRange: (label == UIStrings.Game.carre ? (4...30) : (5...30)),
+                        allowZero: (label == UIStrings.Game.brelan
+                                     || label == UIStrings.Game.chance
+                                     || label == UIStrings.Game.full
+                                     || label == UIStrings.Game.suite
+                                     || label == UIStrings.Game.petiteSuite
+                                     || label == UIStrings.Game.carre
+                                     || label == UIStrings.Game.yams),
+                       onInvalidInput: { v in
+                           alertMessage = "La valeur \(v) n’est pas valide pour \(label)."
+                           showAlert = true
+                       }
                     )
 
                     NumericRow(cfg)
