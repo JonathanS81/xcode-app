@@ -6,6 +6,8 @@
 //
 
 import Foundation
+import SwiftUI
+import UIKit
 
 enum GDV_Helpers {
     static func dashOr(_ value: Int) -> String { value >= 0 ? String(value) : "—" }
@@ -58,6 +60,83 @@ enum GDV_Helpers {
             return UIStrings.Game.petiteSuite
         }
     
+
+    // ===== Helpers ColorData -> Color =====
+
+    private struct RGBA: Codable {
+        let r: CGFloat
+        let g: CGFloat
+        let b: CGFloat
+        let a: CGFloat
+    }
+
+    /// Essaie de convertir un Data (colorData) en Color.
+    /// - Formats supportés :
+    ///   1) UIColor archivé via NSKeyedArchiver
+    ///   2) JSON encodé {r,g,b,a} (CGFloat/Double)
+    ///   3) 4 octets (r,g,b,a) 0...255
+    private func colorFromColorData(_ data: Data) -> Color? {
+        // 1) UIColor archivé
+        if let ui = try? NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: data) {
+            return Color(ui)
+        }
+        // 2) JSON RGBA
+        if let rgba = try? JSONDecoder().decode(RGBA.self, from: data) {
+            return Color(red: rgba.r, green: rgba.g, blue: rgba.b, opacity: rgba.a)
+        }
+        // 3) 4 octets 0...255
+        if data.count == 4 {
+            let bytes = [UInt8](data)
+            let r = Double(bytes[0]) / 255.0
+            let g = Double(bytes[1]) / 255.0
+            let b = Double(bytes[2]) / 255.0
+            let a = Double(bytes[3]) / 255.0
+            return Color(red: r, green: g, blue: b, opacity: a)
+        }
+        return nil
+    }
+
+    /// Couleur fallback stable dérivée de l'UUID (palette hashée)
+    private func hashedColor(for id: UUID) -> Color {
+        var hasher = Hasher()
+        hasher.combine(id)
+        let hue = Double(abs(hasher.finalize() % 360)) / 360.0
+        return Color(hue: hue, saturation: 0.65, brightness: 0.92)
+    }
+
+    /// ✅ Utilise `player.colorData` (Data) → Color, sinon fallback hashé
+    func colorForPlayerID(_ pid: UUID, players: [Player]) -> Color {
+        guard let p = players.first(where: { $0.id == pid }) else { return .accentColor }
+        if let c = colorFromColorData(p.colorData) {
+            return c
+        }
+        return hashedColor(for: pid)
+    }
+
+    // ===== Le reste de tes helpers peut rester identique =====
+
+    func activePlayerID(game: Game, activeScorecardIndex: Int?) -> UUID? {
+        guard let idx = activeScorecardIndex, idx >= 0, idx < game.scorecards.count else { return nil }
+        return game.scorecards[idx].playerID
+    }
+
+    func cellBackground(
+        pid: UUID,
+        isFilled: Bool,
+        activePlayerID: UUID?,
+        players: [Player]
+    ) -> some ShapeStyle {
+        let base = colorForPlayerID(pid, players: players)
+        let isActive = (pid == activePlayerID)
+        if isActive {
+            return base.opacity(isFilled ? 0.55 : 0.25) // plus foncé si rempli
+        } else {
+            return Color(.systemGray6)
+        }
+    }
     
     
 }
+
+
+

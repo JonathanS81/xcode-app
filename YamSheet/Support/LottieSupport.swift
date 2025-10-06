@@ -23,7 +23,7 @@ enum LottieLoader {
             }
         }
         #if DEBUG
-        print("[LottieLoader] ❌ Échec chargement '\(name)' (subdir=\(subdirectory ?? "nil"))")
+        DLog("[LottieLoader] ❌ Échec chargement '\(name)' (subdir=\(subdirectory ?? "nil"))")
         #endif
         return nil
     }
@@ -32,7 +32,7 @@ enum LottieLoader {
     static func listJSONs(in bundle: Bundle = .main) -> [String] {
         let paths = bundle.paths(forResourcesOfType: "json", inDirectory: nil).sorted()
         #if DEBUG
-        print("[LottieLoader] JSON dans bundle:\n" + paths.joined(separator: "\n"))
+        DLog("[LottieLoader] JSON dans bundle:\n" + paths.joined(separator: "\n"))
         #endif
         return paths
     }
@@ -59,12 +59,12 @@ struct LottieView: UIViewRepresentable {
         DispatchQueue.main.async {
             if v.animation != nil {
                 #if DEBUG
-                print("[LottieView] ▶️ play '\(name)'")
+                DLog("[LottieView] ▶️ play '\(name)'")
                 #endif
                 v.play()
             } else {
                 #if DEBUG
-                print("[LottieView] ⚠️ animation == nil pour '\(name)'")
+                DLog("[LottieView] ⚠️ animation == nil pour '\(name)'")
                 #endif
             }
         }
@@ -108,7 +108,7 @@ struct LottieRandomCelebrationView: View {
             // filtre les animations réellement chargeables
             let ok = names.filter { LottieLoader.load(named: $0, subdirectory: subdirectory) != nil }
             #if DEBUG
-            print("[LottieRandom] chargeables =", ok)
+            DLog("[LottieRandom] chargeables =", ok)
             if ok.isEmpty { _ = LottieLoader.listJSONs() }
             #endif
             picked = ok.randomElement()

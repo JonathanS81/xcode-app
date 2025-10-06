@@ -9,12 +9,51 @@ import SwiftUI
 import SwiftData
 
 struct GameDetailView: View {
+    // Accès aux joueurs pour récupérer leur couleur
+    @Query private var allPlayers: [Player]
+
+    // Couleur pour un playerID
+    private func colorForPlayerID(_ id: UUID?) -> Color {
+        guard let id, let p = allPlayers.first(where: { $0.id == id }) else { return .accentColor }
+        return p.color
+    }
+
+    // Si tu as un tableau d’IDs affichés (ex. displayPlayerIDs), utilitaire par index
+    private func colorForColumnIndex(_ idx: Int, in ids: [UUID]) -> Color {
+        guard idx >= 0 && idx < ids.count else { return .accentColor }
+        return colorForPlayerID(ids[idx])
+    }
+
+    // Réglages fins des contrastes (persistés dans les Réglages)
+    @AppStorage("tintLight") private var tintLight: Double = 0.25  // cellules vides (colonne active)
+    @AppStorage("tintDark")  private var tintDark:  Double = 0.65  // cellules remplies (colonne active)
+
+    // MARK: - Active column tint helpers (local)
+    /// ID du joueur actif courant
+    private func _activePID() -> UUID? {
+        return game.activePlayerID
+    }
+
+    /// Teinte de fond quand on ne sait pas encore si la case est remplie
+    private func columnTint(pid: UUID) -> some ShapeStyle {
+        let base = colorForPlayerID(pid)
+        guard _activePID() == pid else { return Color(.systemGray6) }
+        return base.opacity(tintLight)
+    }
+
+    /// Teinte de fond en fonction de l’état (vide/rempli) pour la colonne active
+    private func columnTint(pid: UUID, isFilled: Bool) -> some ShapeStyle {
+        let base = colorForPlayerID(pid)
+        guard _activePID() == pid else { return Color(.systemGray6) }
+        return base.opacity(isFilled ? max(tintDark, tintLight) : tintLight)
+    }
+    
+    
     // MARK: - Env & Model
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
-
-    @Query private var allPlayers: [Player]
+    @Environment(\.colorScheme) private var colorScheme
     @Bindable var game: Game
 
     // MARK: - UI State
@@ -316,7 +355,7 @@ struct GameDetailView: View {
         game.statusOrDefault = .paused
         try? context.save()
         #if DEBUG
-        print("[GameDetailView] Auto-pause (\(reason)) • didAdvance=\(didAdvance)")
+        DLog("[GameDetailView] Auto-pause (\(reason)) • didAdvance=\(didAdvance)")
         #endif
     }
 
@@ -441,7 +480,7 @@ struct GameDetailView: View {
         .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
         .navigationTitle(UIStrings.Game.title)
         .toolbar {
-#if DEBUG
+/*#if DEBUG
             ToolbarItem(placement: .navigationBarLeading) {
                 Menu {
                     Button("Debug • Terminer maintenant (popup)") {
@@ -453,7 +492,7 @@ struct GameDetailView: View {
                     }
                 } label: { Image(systemName: "ladybug.fill") }
             }
-#endif
+#endif */
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 8) {
                     if canShowNextButton {
@@ -692,15 +731,21 @@ struct GameDetailView: View {
 
     private func playersColumnsHeader() -> some View {
         HStack(spacing: 0) {
-            ForEach(displayPlayerIDs, id: \.self) { pid in
+            ForEach(Array(displayPlayerIDs.enumerated()), id: \.element) { index, pid in
                 let name = allPlayers.first(where: { $0.id == pid })?.nickname ?? "—"
+                let baseColor = colorForPlayerID(pid)
+
                 Text(name)
                     .font(.footnote.weight(.semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .frame(minWidth: minCellWidth, maxWidth: .infinity)
                     .padding(.vertical, 6)
-                    .background((game.activePlayerID == pid) ? Color.yellow.opacity(0.28) : Color.gray.opacity(0.12))
+                    .background(baseColor.opacity(0.10)) // ← fond des chips
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(baseColor, lineWidth: (game.activePlayerID == pid) ? 2 : 1) // ← contour
+                    )
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .padding(.horizontal, 2)
                     .contentShape(Rectangle())
@@ -709,8 +754,8 @@ struct GameDetailView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: namesHeaderHeight)          // ✅ hauteur fixe
-        .padding(.bottom, namesHeaderBottom)       // ✅ marge identique des deux côtés
+        .frame(height: namesHeaderHeight)
+        .padding(.bottom, namesHeaderBottom)
     }
 
     private func playersColumnsBody() -> some View {
@@ -825,7 +870,11 @@ struct GameDetailView: View {
                     let scBinding = $game.scorecards[playerIdx]
                     let isLocked  = scBinding.wrappedValue.isLocked(col: scoreColumnIndex, key: label)
                     let binding   = valueBinding(scBinding, keyPath, scoreColumnIndex)
-
+                    let isFilled = (binding.wrappedValue >= 0) // -1 = vide
+                    // En mode sombre, pour la colonne du joueur actif, on garde la teinte claire
+                    // même si la case est "remplie", afin que le caret et le texte restent lisibles.
+                    let effectiveFilledForTint =
+                        (colorScheme == .dark && isCellEnabled(for: pid)) ? false : isFilled
                     let cfg = NumericRow.Config(
                         value: binding,
                         isLocked: isLocked,
@@ -845,11 +894,7 @@ struct GameDetailView: View {
                             } else if let fn = validator {
                                 let raw = newVal ?? -1
                                 let sanitized = fn(newVal)
-                                // Si l'utilisateur a saisi une valeur positive et que la "sanitization" la modifie,
-                                // on signale une entrée invalide (-> NumericRow affichera l'alerte via onInvalidInput).
-                                if raw > 0 && sanitized != raw {
-                                    return -1
-                                }
+                                if raw > 0 && sanitized != raw { return -1 }
                                 return sanitized
                             } else {
                                 return newVal ?? -1
@@ -867,24 +912,36 @@ struct GameDetailView: View {
                                      || label == UIStrings.Game.petiteSuite
                                      || label == UIStrings.Game.carre
                                      || label == UIStrings.Game.yams),
-                       onInvalidInput: { v in
-                           alertMessage = "La valeur \(v) n’est pas valide pour \(label)."
-                           showAlert = true
-                       }
+                        onInvalidInput: { v in
+                            alertMessage = "La valeur \(v) n’est pas valide pour \(label)."
+                            showAlert = true
+                        },
+                        // IMPORTANT: we keep the control itself transparent so the caret/text stay visible
+                        containerFill: AnyShapeStyle(Color.clear),
+                        textColor: .primary,
+                        caretTint: .primary
                     )
 
-                    NumericRow(cfg)
-                        .frame(minWidth: minCellWidth, maxWidth: .infinity, alignment: .leading)
-                        .frame(height: cellRowHeight)
-                        .contextMenu {
-                            Button(UIStrings.Common.validate) {
-                                scBinding.wrappedValue.setLocked(true, col: scoreColumnIndex, key: label)
-                                try? context.save()
-                            }
-                            Button(UIStrings.Common.clear) { binding.wrappedValue = -1 }
+                    // Draw the tinted background BEHIND the NumericRow (fixes dark-mode caret visibility)
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(columnTint(pid: pid, isFilled: effectiveFilledForTint))
+                        NumericRow(cfg)
+                            .frame(minWidth: minCellWidth, maxWidth: .infinity, alignment: .leading)
+                            .frame(height: cellRowHeight)
+                            .background(Color.clear)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .contentShape(Rectangle())
+                    .contextMenu {
+                        Button(UIStrings.Common.validate) {
+                            scBinding.wrappedValue.setLocked(true, col: scoreColumnIndex, key: label)
+                            try? context.save()
                         }
-                        .disabled(isLocked || !isCellEnabled(for: pid))
-                        .padding(.horizontal, 2)
+                        Button(UIStrings.Common.clear) { binding.wrappedValue = -1 }
+                    }
+                    .disabled(isLocked || !isCellEnabled(for: pid))
+                    .padding(.horizontal, 2)
                 }
             }
         }
@@ -924,7 +981,10 @@ struct GameDetailView: View {
                             .multilineTextAlignment(.center)
                             .foregroundColor(.primary)
                             .padding(.horizontal, cellPadding)
-                            .background(cellBackground(col: playerIdx, isOpen: binding.wrappedValue == -1))
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(columnTint(pid: pid, isFilled: binding.wrappedValue >= 0))
+                            )
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                     .disabled(isLocked || !isCellEnabled(for: pid))
@@ -999,7 +1059,10 @@ struct GameDetailView: View {
                         .frame(minWidth: minCellWidth, maxWidth: .infinity)
                         .frame(height: cellRowHeight)
                         .padding(.horizontal, cellPadding)
-                        .background(cellBackground(col: playerIdx, isOpen: (text == UIStrings.Common.dash || text == "—")))
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(columnTint(pid: pid, isFilled: true))
+                        )
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .padding(.horizontal, 2)
                 }
@@ -1037,7 +1100,7 @@ struct GameDetailView: View {
                     ZStack(alignment: .topTrailing) {
                         // Base cell background + content
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(cellBackground(col: playerIdx, isOpen: !awarded))
+                            .fill(columnTint(pid: pid, isFilled: awarded))
 
                         if awarded {
                             // Compact awarded presentation

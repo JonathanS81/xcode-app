@@ -1,0 +1,22 @@
+./YamSheet/YamSheetApp.swift:36:#if DEBUG
+./YamSheet/Support/DevSeed.swift:8:#if DEBUG
+./YamSheet/Support/LottieSupport.swift:25:        #if DEBUG
+./YamSheet/Support/LottieSupport.swift:34:        #if DEBUG
+./YamSheet/Support/LottieSupport.swift:61:                #if DEBUG
+./YamSheet/Support/LottieSupport.swift:66:                #if DEBUG
+./YamSheet/Support/LottieSupport.swift:99:                #if DEBUG
+./YamSheet/Support/LottieSupport.swift:110:            #if DEBUG
+./YamSheet/Support/LottieSupport.swift:139:#if DEBUG && canImport(Lottie)
+./YamSheet/Views/games/GameDetailView.swift:334:        #if DEBUG
+./YamSheet/Views/games/GameDetailView.swift:460:#if DEBUG
+./YamSheet/Views/games/GameDetailView.swift:1170:    #if DEBUG
+./YamSheet/Views/games/EndGameCongratsView.swift:32:        #if DEBUG
+./YamSheet/YamSheetApp.swift:26:            print("SwiftData custom container failed: \(error). Falling back to in-memory container.")
+./YamSheet/Support/DevSeed.swift:108:        print("✅ DevSeed: \(players.count) joueurs / \(gamesCount) parties injectées")
+./YamSheet/Support/LottieSupport.swift:26:        print("[LottieLoader] ❌ Échec chargement '\(name)' (subdir=\(subdirectory ?? "nil"))")
+./YamSheet/Support/LottieSupport.swift:35:        print("[LottieLoader] JSON dans bundle:\n" + paths.joined(separator: "\n"))
+./YamSheet/Support/LottieSupport.swift:62:                print("[LottieView] ▶️ play '\(name)'")
+./YamSheet/Support/LottieSupport.swift:67:                print("[LottieView] ⚠️ animation == nil pour '\(name)'")
+./YamSheet/Support/LottieSupport.swift:111:            print("[LottieRandom] chargeables =", ok)
+./YamSheet/Views/games/GameDetailView.swift:335:        print("[GameDetailView] Auto-pause (\(reason)) • didAdvance=\(didAdvance)")
+./YamSheet/Views/games/EndGameCongratsView.swift:33:        print("[EndGameCongrats] JSON détectés:", all)

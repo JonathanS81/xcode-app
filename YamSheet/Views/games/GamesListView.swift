@@ -82,7 +82,10 @@ struct GamesListView: View {
                 }
             }
             .task {
-                SampleData.ensureSamples(context)
+            #if DEBUG
+                DevSeed.seedIfNeeded(context)
+                //SampleData.ensureSamples(context)
+            #endif
             }
         }
     }
