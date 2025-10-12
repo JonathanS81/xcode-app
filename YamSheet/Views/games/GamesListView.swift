@@ -82,7 +82,7 @@ struct GamesListView: View {
                 }
             }
             .task {
-            #if DEBUG
+#if DEBUG && targetEnvironment(simulator)
                 DevSeed.seedIfNeeded(context)
                 //SampleData.ensureSamples(context)
             #endif

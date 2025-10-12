@@ -102,7 +102,7 @@ struct SettingsView: View {
 #if DEBUG
         .sheet(isPresented: $showDebugSheet) {
             NavigationStack {
-                DebugSettingsView()
+                //DebugSettingsView()
             }
         }
 #endif

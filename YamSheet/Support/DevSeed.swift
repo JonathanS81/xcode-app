@@ -5,7 +5,7 @@
 //  Created by Jonathan Sportiche  on 29/09/2025.
 //
 
-#if DEBUG
+#if DEBUG && targetEnvironment(simulator)
 import SwiftUI
 import SwiftData
 

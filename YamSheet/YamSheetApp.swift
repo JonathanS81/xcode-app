@@ -8,48 +8,40 @@ import SwiftData
 
 @main
 struct YamSheetApp: App {
+    @StateObject private var statsStore: StatsStore
 
-    // MARK: - ModelContainer unifié (App Group + migration depuis Documents)
-    private let container: ModelContainer = {
-        // 1) Tente une migration (copie) de l'ancienne DB (Documents) vers l'App Group si besoin
-        StorePaths.migrateIfNeeded()
+    var sharedModelContainer: ModelContainer = {
+        let schema = Schema([AppSettings.self, Player.self, Game.self, Scorecard.self, Notation.self])
+        do {
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            let url = docs.appendingPathComponent("YamSheet.store")
+            print("🗂️ SwiftData @", url.path)   // debug
+            let config = ModelConfiguration(url: url)
+            let container = try ModelContainer(for: schema, configurations: config)
 
-        // 2) Construit le container à l’URL unique et stable
-        //    ⚠️ Liste tous tes @Model ici pour bâtir le schema
-        let schema = Schema([
-            Player.self,
-            Game.self,
-            Scorecard.self,
-            Notation.self,
-            AppSettings.self
-        ])
-
-        let config = ModelConfiguration(schema: schema, url: StorePaths.storeURL())
-
-        // (Debug) trace l’endroit exact du store la 1re fois
-        StorePaths.logStoreLocation()
-
-        // 3) Un seul container partagé pour toute l’app
-        return try! ModelContainer(for: schema, configurations: [config])
+            // Settings par défaut si absent (idempotent)
+            let context = ModelContext(container)
+            if (try? context.fetch(FetchDescriptor<AppSettings>()))?.isEmpty ?? true {
+                context.insert(AppSettings())
+                try? context.save()
+            }
+            return container
+        } catch {
+            print("⚠️ Container error: \(error) → mémoire.")
+            let mem = ModelConfiguration(isStoredInMemoryOnly: true)
+            return try! ModelContainer(for: schema, configurations: mem)
+        }
     }()
 
-    @Environment(\.scenePhase) private var scenePhase
+    init() {
+        _statsStore = StateObject(wrappedValue: StatsStore())
+    }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
-                // -> On injecte le context *unique* dans la hiérarchie
-                .modelContext(container.mainContext)
+                .environmentObject(statsStore)
         }
-        // Tu peux aussi injecter au niveau Scene (équivalent, mais évite de réinjecter ailleurs)
-        .modelContainer(container)
-        .onChange(of: scenePhase) { _, newPhase in
-            // Sauvegarde prudente quand on passe en arrière-plan
-            if newPhase == .inactive || newPhase == .background {
-                Task { @MainActor in
-                    try? container.mainContext.save()
-                }
-            }
-        }
+        .modelContainer(sharedModelContainer)
     }
 }
