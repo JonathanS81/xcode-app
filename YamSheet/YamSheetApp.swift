@@ -1,51 +1,55 @@
+//
+//  YamSheetApp.swift
+//  YamSheet
+//
+
 import SwiftUI
 import SwiftData
 
 @main
 struct YamSheetApp: App {
-    @StateObject private var statsStore: StatsStore
 
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([AppSettings.self, Player.self, Game.self, Scorecard.self, Notation.self])
-        do {
-            // ✅ Reuse the legacy/custom on-disk location so existing data is found on device
-            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            let url = docs.appendingPathComponent("YamSheet.store")
-            let config = ModelConfiguration(url: url)
+    // MARK: - ModelContainer unifié (App Group + migration depuis Documents)
+    private let container: ModelContainer = {
+        // 1) Tente une migration (copie) de l'ancienne DB (Documents) vers l'App Group si besoin
+        StorePaths.migrateIfNeeded()
 
-            let container = try ModelContainer(for: schema, configurations: config)
+        // 2) Construit le container à l’URL unique et stable
+        //    ⚠️ Liste tous tes @Model ici pour bâtir le schema
+        let schema = Schema([
+            Player.self,
+            Game.self,
+            Scorecard.self,
+            Notation.self,
+            AppSettings.self
+        ])
 
-            // Bootstrap default settings once (idempotent)
-            let context = ModelContext(container)
-            if (try? context.fetch(FetchDescriptor<AppSettings>()))?.isEmpty ?? true {
-                context.insert(AppSettings())
-                try? context.save()
-            }
-            return container
-        } catch {
-            DLog("SwiftData custom container failed: \(error). Falling back to in-memory container.")
-            let memoryConfig = ModelConfiguration(isStoredInMemoryOnly: true)
-            let memoryContainer = try! ModelContainer(for: schema, configurations: memoryConfig)
-            return memoryContainer
-        }
+        let config = ModelConfiguration(schema: schema, url: StorePaths.storeURL())
+
+        // (Debug) trace l’endroit exact du store la 1re fois
+        StorePaths.logStoreLocation()
+
+        // 3) Un seul container partagé pour toute l’app
+        return try! ModelContainer(for: schema, configurations: [config])
     }()
 
-    init() {
-        // Inject the SwiftData context into StatsStore so it can fetch existing data
-        _statsStore = StateObject(wrappedValue: StatsStore())
-#if DEBUG
-if DebugConfig.autoSeedOnLaunch {
-    let ctx = ModelContext(sharedModelContainer)
-    DevSeed.seedIfNeeded(ctx)
-}
-#endif
-    }
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(statsStore)
+                // -> On injecte le context *unique* dans la hiérarchie
+                .modelContext(container.mainContext)
         }
-        .modelContainer(sharedModelContainer)
+        // Tu peux aussi injecter au niveau Scene (équivalent, mais évite de réinjecter ailleurs)
+        .modelContainer(container)
+        .onChange(of: scenePhase) { _, newPhase in
+            // Sauvegarde prudente quand on passe en arrière-plan
+            if newPhase == .inactive || newPhase == .background {
+                Task { @MainActor in
+                    try? container.mainContext.save()
+                }
+            }
+        }
     }
 }
