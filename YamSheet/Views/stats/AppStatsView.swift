@@ -10,7 +10,7 @@ import Charts
 import SwiftData
 
 private struct VictoryEntry: Identifiable {
-    let id = UUID()
+    let id: UUID   // player id
     let name: String
     let wins: Int
 }
@@ -27,47 +27,14 @@ struct AppStatsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allGames: [Game]
     @Query(sort: \Player.nickname, order: .forward) private var allPlayers: [Player]
+    @State private var showPieChart = false
   
-
-    private var colorByName: [String: Color] {
-        Dictionary(uniqueKeysWithValues: allPlayers.map { ($0.nickname.isEmpty ? $0.name : $0.nickname, $0.color) })
+    private var nameByID: [UUID: String] {
+        Dictionary(uniqueKeysWithValues: allPlayers.map { ($0.id, $0.nickname.isEmpty ? $0.name : $0.nickname) })
     }
 
-    private var domainNamesForCharts: [String] {
-        // Assure un ordre stable pour la palette custom
-        Array(colorByName.keys).sorted()
-    }
-
-    private var rangeColorsForCharts: [Color] {
-        domainNamesForCharts.compactMap { colorByName[$0] }
-    }
-
-    private var fallbackVictories: [VictoryEntry] {
-        guard !allGames.isEmpty else { return [] }
-        var winsByPlayer: [UUID: Int] = [:]
-        for g in allGames where g.statusOrDefault == .completed {
-            var bestPID: UUID? = nil
-            var bestScore = Int.min
-            for sc in g.scorecards {
-                var total = 0
-                let mirror = Mirror(reflecting: sc)
-                if let totals = mirror.children.first(where: { $0.label == "totals" })?.value as? [Int] {
-                    total = totals.last ?? 0
-                } else if let totalAll = mirror.children.first(where: { $0.label == "totalAll" })?.value as? Int {
-                    total = totalAll
-                }
-                if total > bestScore {
-                    bestScore = total
-                    bestPID = sc.playerID
-                }
-            }
-            if let pid = bestPID { winsByPlayer[pid, default: 0] += 1 }
-        }
-        let nameByID = Dictionary(uniqueKeysWithValues: allPlayers.map { ($0.id, $0.nickname) })
-        return winsByPlayer.compactMap { (pid, w) in
-            guard let name = nameByID[pid] else { return nil }
-            return VictoryEntry(name: name, wins: w)
-        }.sorted { $0.wins > $1.wins }
+    private var colorByID: [UUID: Color] {
+        Dictionary(uniqueKeysWithValues: allPlayers.map { ($0.id, $0.color) })
     }
 
     // Best-effort extraction of a scorecard's final total across various model versions
@@ -149,6 +116,29 @@ struct AppStatsView: View {
         }
     }
 
+    /// Victoires par joueur, calculées à partir des parties complétées avec le moteur de score
+    private func victoriesFromEngine() -> [VictoryEntry] {
+        guard !allGames.isEmpty else { return [] }
+        var winsByPID: [UUID: Int] = [:]
+        for g in allGames where g.statusOrDefault == .completed {
+            var bestPID: UUID? = nil
+            var bestScore = Int.min
+            for sc in g.scorecards {
+                let total = StatsService.total(for: sc, game: g)
+                if total > bestScore {
+                    bestScore = total
+                    bestPID = sc.playerID
+                }
+            }
+            if let pid = bestPID { winsByPID[pid, default: 0] += 1 }
+        }
+        return winsByPID.compactMap { (pid, w) in
+            guard let n = nameByID[pid] else { return nil }
+            return VictoryEntry(id: pid, name: n, wins: w)
+        }
+        .sorted { $0.wins > $1.wins }
+    }
+
     var body: some View {
         List {
             if let s = stats {
@@ -171,31 +161,60 @@ struct AppStatsView: View {
                     }
                 }
 
-                // Section: Victoires par joueur (Bar Chart)
+                // Section: Victoires par joueur (Bar Chart ou Camembert)
                 Section("Victoires par joueur") {
-                    let victories: [VictoryEntry] = {
-                        let fromStore = statsStore.playerStats
-                            .map { VictoryEntry(name: $0.name, wins: $0.wins) }
-                            .filter { $0.wins > 0 }
-                        return fromStore.isEmpty ? fallbackVictories : fromStore
-                    }()
+                    let victories = victoriesFromEngine()
                     if !victories.isEmpty {
-                        Chart {
-                            ForEach(victories) { entry in
-                                SectorMark(
-                                    angle: .value("Victoires", entry.wins),
-                                    innerRadius: .ratio(0.5),
-                                    angularInset: 2
-                                )
-                                .foregroundStyle(by: .value("Joueur", entry.name))
-                                .annotation(position: .overlay, alignment: .center) {
-                                    Text(entry.name).font(.caption2)
+                        Toggle(isOn: $showPieChart.animation()) {
+                            Text(showPieChart ? "Afficher en barres" : "Afficher en camembert")
+                                .font(.caption)
+                        }
+                        .toggleStyle(.button)
+                        .padding(.bottom, 4)
+
+                        if showPieChart {
+                            Chart {
+                                ForEach(victories) { entry in
+                                    SectorMark(
+                                        angle: .value("Victoires", entry.wins),
+                                        innerRadius: .ratio(0.45),
+                                        angularInset: 1
+                                    )
+                                    .foregroundStyle(by: .value("Joueur", entry.name))
+                                    .annotation(position: .overlay) {
+                                        VStack(spacing: 2) {
+                                            Text(entry.name)
+                                                .font(.caption2)
+                                                .bold()
+                                            Text("\(entry.wins)")
+                                                .font(.caption2)
+                                        }
+                                    }
                                 }
                             }
+                            .chartForegroundStyleScale(
+                                domain: victories.map { $0.name },
+                                range: victories.compactMap { colorByID[$0.id] }
+                            )
+                            .frame(height: 250)
+                        } else {
+                            let domain = victories.map { $0.name }
+                            let range  = victories.compactMap { colorByID[$0.id] }
+                            Chart {
+                                ForEach(victories) { entry in
+                                    BarMark(
+                                        x: .value("Joueur", entry.name),
+                                        y: .value("Victoires", entry.wins)
+                                    )
+                                    .foregroundStyle(by: .value("Joueur", entry.name))
+                                    .annotation(position: .overlay, alignment: .center) {
+                                        Text("\(entry.wins)").font(.caption2).bold()
+                                    }
+                                }
+                            }
+                            .chartForegroundStyleScale(domain: domain, range: range)
+                            .frame(height: 220)
                         }
-                        .chartForegroundStyleScale(domain: domainNamesForCharts, range: rangeColorsForCharts)
-                        .frame(height: 220)
-                        
                     } else {
                         Text("Aucune donnée de victoires par joueur.").foregroundStyle(.secondary)
                     }
@@ -231,41 +250,17 @@ struct AppStatsView: View {
                                 }
                             }
                         }
-                        .chartForegroundStyleScale(domain: domainNamesForCharts, range: rangeColorsForCharts)
+                        .chartForegroundStyleScale(
+                            domain: avgsSorted.map { $0.name },
+                            range: avgsSorted.compactMap { name in
+                                allPlayers.first { ($0.nickname.isEmpty ? $0.name : $0.nickname) == name.name }?.color
+                            }
+                        )
                         .chartYScale(domain: 0...(maxAvg > 0 ? maxAvg * 1.1 : 1))
                         .frame(height: 220)
                     } else {
                         Text("Pas encore assez de parties pour calculer des moyennes.")
                             .foregroundStyle(.secondary)
-                    }
-                }
-
-                // Section: Répartition des victoires (Pie Chart)
-                Section("Répartition des victoires") {
-                    let victories: [VictoryEntry] = {
-                        let fromStore = statsStore.playerStats
-                            .map { VictoryEntry(name: $0.name, wins: $0.wins) }
-                            .filter { $0.wins > 0 }
-                        return fromStore.isEmpty ? fallbackVictories : fromStore
-                    }()
-                    if !victories.isEmpty {
-                        Chart {
-                            ForEach(victories) { entry in
-                                SectorMark(
-                                    angle: .value("Victoires", entry.wins),
-                                    innerRadius: .ratio(0.5),
-                                    angularInset: 2
-                                )
-                                .foregroundStyle(by: .value("Joueur", entry.name))
-                                .annotation(position: .overlay, alignment: .center) {
-                                    Text(entry.name)
-                                        .font(.caption2)
-                                }
-                            }
-                        }
-                        .frame(height: 220)
-                    } else {
-                        Text("Aucune donnée sur la répartition des victoires.").foregroundStyle(.secondary)
                     }
                 }
 

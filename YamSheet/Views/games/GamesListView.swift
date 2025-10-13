@@ -90,23 +90,73 @@ struct GamesListView: View {
         }
     }
 
+    // MARK: - Helpers (Players & Location)
+    private func participantNicknames(for game: Game) -> String {
+        let ids = game.participantIDs
+        guard !ids.isEmpty else { return "—" }
+        // Fetch only players whose id is in participantIDs
+        let descriptor = FetchDescriptor<Player>()
+        let players: [Player] = (try? context.fetch(descriptor)) ?? []
+        let map: [UUID: Player] = Dictionary(uniqueKeysWithValues: players.map { ($0.id, $0) })
+        let names: [String] = ids.compactMap { pid in
+            if let p = map[pid] {
+                let nick = p.nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+                return nick.isEmpty ? p.name : nick
+            }
+            return nil
+        }
+        return names.joined(separator: ", ")
+    }
+
+    /// Placeholder pour un futur champ `location` dans `Game`.
+    /// Retourne nil tant que le modèle ne stocke pas explicitement la géolocalisation.
+    private func gameLocation(for game: Game) -> String? {
+        return nil
+    }
+
     // MARK: - Row
     @ViewBuilder
     private func row(for game: Game) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("\(UIStrings.Common.game) \(UIStrings.Common.dash)  \(game.createdAt.formatted(date: .abbreviated, time: .shortened))")
+        VStack(alignment: .leading, spacing: 8) {
+            // Titre = nom de la partie (ou fallback)
+            Text(game.name.isEmpty ? UIStrings.Common.game : game.name)
                 .font(.headline)
 
-            if !game.comment.isEmpty {
-                Text(game.comment).foregroundStyle(.secondary)
+            // Date (toujours visible)
+            Text(game.createdAt.formatted(date: .abbreviated, time: .shortened))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            // Participants (surnoms ou noms)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Image(systemName: "person.2")
+                    .imageScale(.small)
+                    .foregroundStyle(.secondary)
+                Text(participantNicknames(for: game))
+                    .font(.subheadline)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
 
-            HStack {
-                Spacer()
-                statusBadge(for: game.statusOrDefault)
+            // Géolocalisation (si disponible un jour)
+            if let loc = gameLocation(for: game) {
+                HStack(spacing: 6) {
+                    Image(systemName: "mappin.and.ellipse")
+                        .imageScale(.small)
+                        .foregroundStyle(.secondary)
+                    Text(loc)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
             }
-            .font(.caption)
+
+            // Badge de statut aligné à droite
+            HStack { Spacer(); statusBadge(for: game.statusOrDefault) }
+                .font(.caption)
         }
+        .padding(.vertical, 6)
     }
 
     // MARK: - Status badge
