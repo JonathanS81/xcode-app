@@ -7,29 +7,66 @@
 
 import SwiftUI
 import SwiftData
+#if canImport(UIKit)
+import UIKit
+#endif
 
 @Model
 final class Player {
-    // Identité
+    // MARK: - Identité (schéma actuel)
     @Attribute(.unique) var id: UUID
     var name: String
     var nickname: String
 
-    // Champs facultatifs
+    // Champs facultatifs (schéma actuel)
     var email: String?
     var favoriteEmoji: String?
 
-    // Couleur persistée (RGBA codée en Data)
+    // Couleur persistée (RGBA codée en Data) (schéma actuel)
     var colorData: Data
 
-    // Avatar (stocké hors du fichier principal pour éviter de gonfler la DB)
+    // Avatar (stocké hors du fichier principal) (schéma actuel)
     @Attribute(.externalStorage) var avatarImageData: Data?
 
-    // Statut invité
+    // Statut invité (schéma actuel)
     var isGuest: Bool
 
-    // MARK: - Init
+    // ============================================================
+    // MARK: - Compatibilité rétro (ancienne base du 25/09)
+    // Ces propriétés *optionnelles* existent uniquement pour permettre
+    // à SwiftData d’ouvrir l’ancien store sans migration destructive.
+    // Elles ne sont pas utilisées par le code “nouveau”, mais mappent
+    // les anciennes colonnes si elles sont présentes.
 
+    /// Anciennes stats persistées côté Player (legacy)
+    @Attribute(originalName: "gamesCount")
+    var legacy_gamesCount: Int?
+
+    @Attribute(originalName: "yamsCount")
+    var legacy_yamsCount: Int?
+
+    @Attribute(originalName: "averageScore")
+    var legacy_averageScore: Double?
+
+    @Attribute(originalName: "bestScore")
+    var legacy_bestScore: Int?
+
+    @Attribute(originalName: "worstScore")
+    var legacy_worstScore: Int?
+
+    @Attribute(originalName: "wins")
+    var legacy_wins: Int?
+
+    @Attribute(originalName: "losses")
+    var legacy_losses: Int?
+
+    // Si, dans une ancienne révision, le surnom s'appelait "nick", décommente :
+    // @Attribute(originalName: "nick")
+    // var nickname: String
+
+    // ============================================================
+
+    // MARK: - Init (schéma actuel)
     init(id: UUID = UUID(),
          name: String,
          nickname: String,
@@ -44,13 +81,14 @@ final class Player {
         self.nickname = nickname
         self.email = email
         self.favoriteEmoji = favoriteEmoji
-        self.colorData = Player.encode(color)     // encodage RGBA
+        self.colorData = Player.encode(color)     // encodage RGBA JSON
         self.avatarImageData = avatarImageData
         self.isGuest = isGuest
+
+        // Les champs legacy_* restent nil par défaut (c’est voulu).
     }
 
     // MARK: - Couleur (computed)
-
     var color: Color {
         get {
             (try? JSONDecoder().decode(ColorCodable.self, from: colorData))?.color ?? .blue
@@ -61,14 +99,12 @@ final class Player {
     }
 
     // MARK: - Helpers
-
     private static func encode(_ color: Color) -> Data {
         (try? JSONEncoder().encode(ColorCodable(color))) ?? Data()
     }
 }
 
 // MARK: - UI Helpers (optionnel)
-
 extension Player {
     /// Initiales pour un avatar monogramme (ex. “JS”)
     var initials: String {
@@ -76,7 +112,6 @@ extension Player {
         let first = parts.first?.first.map { String($0) } ?? ""
         let last = parts.dropFirst().first?.first.map { String($0) } ?? ""
         let nickInitial = nickname.first.map { String($0) } ?? ""
-        // Priorité : initiales nom/prénom sinon initiale du surnom
         let composed = (first + last)
         return composed.isEmpty ? nickInitial : composed
     }
