@@ -38,7 +38,6 @@ struct PlayerEditorView: View {
                 nickname: player.nickname,
                 email: player.email ?? "",
                 favoriteEmoji: player.favoriteEmoji ?? "",
-                //preferredColor: Color(hex: player.preferredColorHex ?? "") ?? .blue,
                 preferredColor: player.color,
                 isGuest: player.isGuest,
                 avatarImageData: player.avatarImageData

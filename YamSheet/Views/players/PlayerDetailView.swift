@@ -16,6 +16,8 @@ struct PlayerDetailView: View {
     @Environment(\.modelContext) private var context
     @Query private var allGames: [Game]
 
+    @State private var presentEdit: Bool = false
+
     // MARK: - Derived metrics
     private var gamesInvolvingPlayer: [Game] {
         allGames.filter { g in g.scorecards.contains { $0.playerID == player.id } }
@@ -75,6 +77,18 @@ struct PlayerDetailView: View {
         }
         .navigationTitle(player.nickname.isEmpty ? player.name : player.nickname)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Modifier") { presentEdit = true }
+            }
+        }
+        .sheet(isPresented: $presentEdit) {
+            NavigationStack {
+                PlayerEditorView(player: player)
+                    .navigationTitle("Modifier le joueur")
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+        }
     }
 
     // MARK: - Header

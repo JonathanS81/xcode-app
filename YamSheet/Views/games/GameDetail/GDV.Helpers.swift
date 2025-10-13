@@ -105,12 +105,12 @@ enum GDV_Helpers {
     }
 
     /// ✅ Utilise `player.colorData` (Data) → Color, sinon fallback hashé
+    /// Couleur du joueur (utilise la computed `Player.color` qui gère le fallback .blue)
     func colorForPlayerID(_ pid: UUID, players: [Player]) -> Color {
-        guard let p = players.first(where: { $0.id == pid }) else { return .accentColor }
-        if let c = colorFromColorData(p.colorData) {
-            return c
+        if let p = players.first(where: { $0.id == pid }) {
+            return p.color          // ✅ plus besoin de lire colorData
         }
-        return hashedColor(for: pid)
+        return .blue                // fallback si jamais non trouvé
     }
 
     // ===== Le reste de tes helpers peut rester identique =====
