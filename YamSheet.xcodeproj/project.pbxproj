@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		7516CDAC2E6F56F5000CBEF5 /* Lottie in Frameworks */ = {isa = PBXBuildFile; productRef = 7516CDAB2E6F56F5000CBEF5 /* Lottie */; };
+		75B41C7E2E9EF57500104902 /* SwiftUICharts in Frameworks */ = {isa = PBXBuildFile; productRef = 75B41C7D2E9EF57500104902 /* SwiftUICharts */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -47,6 +48,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				7516CDAC2E6F56F5000CBEF5 /* Lottie in Frameworks */,
+				75B41C7E2E9EF57500104902 /* SwiftUICharts in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -106,6 +108,7 @@
 			name = YamSheet;
 			packageProductDependencies = (
 				7516CDAB2E6F56F5000CBEF5 /* Lottie */,
+				75B41C7D2E9EF57500104902 /* SwiftUICharts */,
 			);
 			productName = YamSheet;
 			productReference = 75426E592E5F132800A3A016 /* YamSheet.app */;
@@ -185,6 +188,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				7516CDAA2E6F5608000CBEF5 /* XCRemoteSwiftPackageReference "lottie-ios" */,
+				75B41C7C2E9EF57500104902 /* XCRemoteSwiftPackageReference "ChartView" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 75426E5A2E5F132800A3A016 /* Products */;
@@ -561,6 +565,14 @@
 				minimumVersion = 4.5.2;
 			};
 		};
+		75B41C7C2E9EF57500104902 /* XCRemoteSwiftPackageReference "ChartView" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/AppPear/ChartView";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.5.5;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -568,6 +580,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 7516CDAA2E6F5608000CBEF5 /* XCRemoteSwiftPackageReference "lottie-ios" */;
 			productName = Lottie;
+		};
+		75B41C7D2E9EF57500104902 /* SwiftUICharts */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 75B41C7C2E9EF57500104902 /* XCRemoteSwiftPackageReference "ChartView" */;
+			productName = SwiftUICharts;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
