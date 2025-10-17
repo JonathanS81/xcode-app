@@ -14,6 +14,14 @@ final class Scorecard: Identifiable {
     var id: UUID
     var playerID: UUID
     var columns: Int
+
+    // --------- Compat rétro : ancien nom éventuel du tableau de primes Yams ---------
+    // Dans certaines bases plus anciennes, le champ s'appelait `extraYams`.
+    // On l’expose en optionnel pour que SwiftData puisse ouvrir l’ancienne DB.
+    @Attribute(originalName: "extraYams")
+    var legacy_extraYams: [Bool]?     // <— lu si présent dans le store ancien
+
+    // Champ actuel utilisé par le code
     var extraYamsAwarded: [Bool] = []
 
     @Relationship(deleteRule: .nullify, inverse: \Game.scorecards) var game: Game?
@@ -34,7 +42,7 @@ final class Scorecard: Identifiable {
     var fullData: Data
     var carreData: Data
     var yamsData: Data
-   
+
     var suiteData: Data            // grande suite (1–5 ou 2–6) : 0 / 15 / 20
     var petiteSuiteData: Data      // petite suite (si activée) : 0 / score paramétré
 
@@ -61,7 +69,7 @@ final class Scorecard: Identifiable {
         self.fullData = initArray()
         self.carreData = initArray()
         self.yamsData = initArray()
-        
+
         self.suiteData = initArray()
         self.petiteSuiteData = initArray()
         self.extraYamsAwarded = Array(repeating: false, count: columns)
@@ -124,16 +132,16 @@ final class Scorecard: Identifiable {
         get { decodeJSON([Int].self, from: yamsData) }
         set { yamsData = encodeJSON(newValue) }
     }
-    
+
     var suite: [Int] {
-            get { decodeJSON([Int].self, from: suiteData) }
-            set { suiteData = encodeJSON(newValue) }
-        }
-    
+        get { decodeJSON([Int].self, from: suiteData) }
+        set { suiteData = encodeJSON(newValue) }
+    }
+
     var petiteSuite: [Int] {
-            get { decodeJSON([Int].self, from: petiteSuiteData) }
-            set { petiteSuiteData = encodeJSON(newValue) }
-        }
+        get { decodeJSON([Int].self, from: petiteSuiteData) }
+        set { petiteSuiteData = encodeJSON(newValue) }
+    }
 
     var locks: [String: Bool] {
         get { decodeJSON([String: Bool].self, from: locksData) }

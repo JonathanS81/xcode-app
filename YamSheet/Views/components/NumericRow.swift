@@ -22,6 +22,9 @@ struct NumericRow: View {
         var allowedRange: ClosedRange<Int> = 5...30
         var allowZero: Bool = false
         var onInvalidInput: ((Int) -> Void)? = nil
+        var containerFill: AnyShapeStyle? = nil
+        var textColor: Color? = nil               // ⬅️ NOUVEAU
+        var caretTint: Color? = nil               // ⬅️ NOUVEAU
     }
 
     private let cfg: Config
@@ -45,14 +48,18 @@ struct NumericRow: View {
             .textInputAutocapitalization(.never)
             .submitLabel(.done)
             .multilineTextAlignment(.center)            // curseur & saisie centrés
+            .foregroundColor(cfg.textColor ?? .primary)
+            .tint(cfg.caretTint ?? .accentColor)
+            .background(Color.clear)
             .opacity(isFocused ? 1.0 : 0.001)           // hors focus on masque le texte natif
             .padding(cfg.contentPadding)
             .frame(maxWidth: .infinity, minHeight: 36)  // même hauteur que les Picker
-            .background(backgroundColor)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(
+               // RoundedRectangle(cornerRadius: 8)
+                   // .stroke(Color.accentColor.opacity(isFocused ? 0.35 : 0.0), lineWidth: 1)
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.accentColor.opacity(isFocused ? 0.35 : 0.0), lineWidth: 1)
+                              .fill(cfg.containerFill ?? AnyShapeStyle(Color(.systemGray6)))
             )
             .onSubmit { commit() }
             .onChange(of: isFocused) { was, now in

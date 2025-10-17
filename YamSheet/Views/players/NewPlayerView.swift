@@ -1,3 +1,9 @@
+//
+//  PlayerEditorView.swift
+//  YamSheet
+//
+//  Created by Jonathan Sportiche  on 30/08/2025.
+//
 import SwiftUI
 import SwiftData
 
@@ -5,34 +11,37 @@ struct NewPlayerView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
 
-    @State private var name: String = ""
-    @State private var nickname: String = ""
-    @State private var email: String = ""
-    @State private var isGuest: Bool = false
+    @State private var draft = PlayerFormView.Draft()
+
+    /// Callback optionnel déclenché une fois le joueur créé et sauvegardé
+    var onCreated: ((Player) -> Void)? = nil
 
     var body: some View {
-        NavigationStack {
-            Form {
-                TextField(UIStrings.Player.name, text: $name)
-                TextField(UIStrings.Player.surname.capitalized, text: $nickname)
-                TextField(UIStrings.Player.email, text: $email)
-                    .keyboardType(.emailAddress)
-                Toggle(UIStrings.Player.invite, isOn: $isGuest)
-            }
-            .navigationTitle("Nouveau joueur")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button(UIStrings.Common.cancel) { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(UIStrings.Common.create) { create() }.disabled(name.isEmpty || nickname.isEmpty)
-                }
-            }
-        }
-    }
+        PlayerFormView(
+            draft: $draft,
+            isEditing: false,
+            onValidate: { d in
+                // Création du joueur avec le nouveau modèle (couleur directe)
+                let p = Player(
+                    name: d.name.trimmingCharacters(in: .whitespacesAndNewlines),
+                    nickname: d.nickname.trimmingCharacters(in: .whitespacesAndNewlines),
+                    email: d.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : d.email,
+                    favoriteEmoji: d.favoriteEmoji.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : d.favoriteEmoji,
+                    color: d.preferredColor,
+                    avatarImageData: d.avatarImageData,
+                    isGuest: d.isGuest
+                )
+                context.insert(p)
+                try? context.save()
 
-    private func create() {
-        let p = Player(name: name, nickname: nickname, email: email.isEmpty ? nil : email, isGuest: isGuest)
-        context.insert(p)
-        try? context.save()
-        dismiss()
+                // Notifier l'appelant (NewGameView, etc.)
+                onCreated?(p)
+                dismiss()
+            },
+            onCancel: {
+                dismiss()
+            }
+        )
+        .navigationTitle("Nouveau joueur")
     }
 }

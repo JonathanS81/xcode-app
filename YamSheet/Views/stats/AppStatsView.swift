@@ -10,7 +10,7 @@ import Charts
 import SwiftData
 
 private struct VictoryEntry: Identifiable {
-    let id = UUID()
+    let id: UUID   // player id
     let name: String
     let wins: Int
 }
@@ -21,56 +21,80 @@ private struct AverageEntry: Identifiable {
     let avg: Double
 }
 
+private struct BarTip: Equatable {
+    var name: String
+    var wins: Int
+    var pos: CGPoint
+}
+
+private struct BarTipText: Equatable {
+    var id: UUID?    // player id when known
+    var name: String
+    var valueText: String
+    var pos: CGPoint
+}
+
 struct AppStatsView: View {
     @EnvironmentObject var statsStore: StatsStore
     let stats: AppStats?
     @Environment(\.modelContext) private var modelContext
     @Query private var allGames: [Game]
     @Query(sort: \Player.nickname, order: .forward) private var allPlayers: [Player]
-
-    private var fallbackVictories: [VictoryEntry] {
-        guard !allGames.isEmpty else { return [] }
-        var winsByPlayer: [UUID: Int] = [:]
-        for g in allGames where g.statusOrDefault == .completed {
-            var bestPID: UUID? = nil
-            var bestScore = Int.min
-            for sc in g.scorecards {
-                var total = 0
-                let mirror = Mirror(reflecting: sc)
-                if let totals = mirror.children.first(where: { $0.label == "totals" })?.value as? [Int] {
-                    total = totals.last ?? 0
-                } else if let totalAll = mirror.children.first(where: { $0.label == "totalAll" })?.value as? Int {
-                    total = totalAll
-                }
-                if total > bestScore {
-                    bestScore = total
-                    bestPID = sc.playerID
-                }
+    @State private var showPieChart = false
+    @State private var selectedVictoryNameBar: String?
+    @State private var selectedVictorySlice: String?
+    
+    // Tooltip state (iOS 17+)
+    @State private var barTip: BarTip? = nil
+    @State private var barTipRate: BarTipText? = nil
+    @State private var barTipAvg: BarTipText? = nil
+    
+    private func tipBubble(_ title: String, _ value: String, color: Color) -> some View {
+        HStack(spacing: 8) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.caption).foregroundStyle(.secondary)
+                Text(value).font(.caption.weight(.medium))
             }
-            if let pid = bestPID { winsByPlayer[pid, default: 0] += 1 }
         }
-        let nameByID = Dictionary(uniqueKeysWithValues: allPlayers.map { ($0.id, $0.nickname) })
-        return winsByPlayer.compactMap { (pid, w) in
-            guard let name = nameByID[pid] else { return nil }
-            return VictoryEntry(name: name, wins: w)
-        }.sorted { $0.wins > $1.wins }
+        .padding(8)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .shadow(radius: 2)
     }
-
+    
+    private func tipValueBubble(_ value: String, color: Color) -> some View {
+        HStack(spacing: 8) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            Text(value).font(.caption.weight(.medium))
+        }
+        .padding(8)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .shadow(radius: 2)
+    }
+    
+    private var nameByID: [UUID: String] {
+        Dictionary(uniqueKeysWithValues: allPlayers.map { ($0.id, $0.nickname.isEmpty ? $0.name : $0.nickname) })
+    }
+    
+    private var colorByID: [UUID: Color] {
+        Dictionary(uniqueKeysWithValues: allPlayers.map { ($0.id, $0.color) })
+    }
+    
     // Best-effort extraction of a scorecard's final total across various model versions
     private func finalTotal(from sc: Scorecard) -> Int {
         let m = Mirror(reflecting: sc)
-
+        
         // 1) Direct well-known integer fields
         if let v = m.children.first(where: { $0.label == "totalAll" })?.value as? Int { return v }
         if let v = m.children.first(where: { $0.label == "grandTotal" })?.value as? Int { return v }
         if let v = m.children.first(where: { $0.label == "total" })?.value as? Int { return v }
         if let v = m.children.first(where: { $0.label == "overallTotal" })?.value as? Int { return v }
-
+        
         // 2) Arrays potentially containing totals – take the last or the max
         if let arr = m.children.first(where: { $0.label == "totals" })?.value as? [Int] { return arr.last ?? 0 }
         if let arr = m.children.first(where: { $0.label == "allTotals" })?.value as? [Int] { return arr.last ?? 0 }
         if let arr = m.children.first(where: { $0.label == "sectionTotals" })?.value as? [Int] { return arr.reduce(0, +) }
-
+        
         // 3) Any Int field whose name contains "total" or "sum" – keep the max
         var best = 0
         for c in m.children {
@@ -82,7 +106,7 @@ struct AppStatsView: View {
                 if let last = arr.last { best = max(best, last) }
             }
         }
-
+        
         // 4) Numeric strings that look like totals (e.g., "123" or "Total: 245") – take the max number found
         if best == 0 {
             var numericMax = 0
@@ -97,7 +121,7 @@ struct AppStatsView: View {
         }
         return best
     }
-
+    
     private var fallbackAverages: [AverageEntry] {
         guard !allGames.isEmpty else { return [] }
         var sums: [UUID: Int] = [:]
@@ -115,7 +139,7 @@ struct AppStatsView: View {
             return AverageEntry(name: name, avg: Double(sum) / Double(c))
         }.sorted { $0.avg > $1.avg }
     }
-
+    
     // Compute averages directly from the canonical score engine (StatsService/StatsEngine)
     private func averagesFromEngine() -> [AverageEntry] {
         guard !allGames.isEmpty else { return [] }
@@ -134,123 +158,335 @@ struct AppStatsView: View {
             return AverageEntry(name: name, avg: Double(sum) / Double(c))
         }
     }
-
-    var body: some View {
-        List {
-            if let s = stats {
-                // Section: Général
-                Section("Général") {
-                    LabeledContent("Parties (total)", value: "\(s.totalGames)")
-                    LabeledContent("Parties terminées", value: "\(s.completedGames)")
-                    LabeledContent("Joueurs", value: "\(s.totalPlayers)")
+    
+    /// Victoires par joueur, calculées à partir des parties complétées avec le moteur de score
+    private func victoriesFromEngine() -> [VictoryEntry] {
+        guard !allGames.isEmpty else { return [] }
+        var winsByPID: [UUID: Int] = [:]
+        for g in allGames where g.statusOrDefault == .completed {
+            var bestPID: UUID? = nil
+            var bestScore = Int.min
+            for sc in g.scorecards {
+                let total = StatsService.total(for: sc, game: g)
+                if total > bestScore {
+                    bestScore = total
+                    bestPID = sc.playerID
                 }
-
-                // Section: Records
-                Section("Records") {
-                    if let best = s.bestScoreEver {
-                        LabeledContent("Meilleur score", value: "\(best.score) — \(best.name)")
-                    } else {
-                        Text("Pas encore de partie terminée.")
-                    }
-                    if let mw = s.mostWins {
-                        LabeledContent("Plus de victoires", value: "\(mw.wins) — \(mw.name)")
-                    }
-                }
-
-                // Section: Victoires par joueur (Bar Chart)
-                Section("Victoires par joueur") {
-                    let victories: [VictoryEntry] = {
-                        let fromStore = statsStore.playerStats
-                            .map { VictoryEntry(name: $0.name, wins: $0.wins) }
-                            .filter { $0.wins > 0 }
-                        return fromStore.isEmpty ? fallbackVictories : fromStore
-                    }()
-                    if !victories.isEmpty {
-                        Chart {
-                            ForEach(victories) { entry in
-                                BarMark(
-                                    x: .value("Joueur", entry.name),
-                                    y: .value("Victoires", entry.wins)
-                                )
-                                .foregroundStyle(by: .value("Joueur", entry.name))
-                            }
-                        }
-                        .frame(height: 220)
-                    } else {
-                        Text("Aucune donnée de victoires par joueur.").foregroundStyle(.secondary)
-                    }
-                }
-
-                // Section: Score moyen par joueur (Bar Chart)
-                Section("Score moyen par joueur") {
-                    let avgsFromStore: [AverageEntry] = statsStore.playerStats.map { AverageEntry(name: $0.name, avg: $0.avgScore) }
-
-                    // 2) Fallback: si le store est vide **ou** ne retourne que des 0, on calcule via StatsService/StatsEngine
-                    let avgs: [AverageEntry] = {
-                        if avgsFromStore.isEmpty || avgsFromStore.allSatisfy({ $0.avg == 0 }) {
-                            let engine = averagesFromEngine()
-                            return engine.isEmpty ? fallbackAverages : engine
-                        }
-                        return avgsFromStore
-                    }()
-                    let avgsSorted = avgs.sorted { $0.avg > $1.avg }
-
-                    if !avgsSorted.isEmpty {
-                        let maxAvg = avgsSorted.map { $0.avg }.max() ?? 0
-                        Chart {
-                            ForEach(avgsSorted) { entry in
-                                BarMark(
-                                    x: .value("Joueur", entry.name),
-                                    y: .value("Moyenne", entry.avg)
-                                )
-                                .foregroundStyle(by: .value("Joueur", entry.name))
-                                .annotation(position: .overlay, alignment: .center) {
-                                    Text("\(Int(entry.avg.rounded()))")
-                                        .font(.caption2)
-                                        .bold()
-                                }
-                            }
-                        }
-                        .chartYScale(domain: 0...(maxAvg > 0 ? maxAvg * 1.1 : 1))
-                        .frame(height: 220)
-                    } else {
-                        Text("Pas encore assez de parties pour calculer des moyennes.")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                // Section: Répartition des victoires (Pie Chart)
-                Section("Répartition des victoires") {
-                    let victories: [VictoryEntry] = {
-                        let fromStore = statsStore.playerStats
-                            .map { VictoryEntry(name: $0.name, wins: $0.wins) }
-                            .filter { $0.wins > 0 }
-                        return fromStore.isEmpty ? fallbackVictories : fromStore
-                    }()
-                    if !victories.isEmpty {
-                        Chart {
-                            ForEach(victories) { entry in
-                                SectorMark(
-                                    angle: .value("Victoires", entry.wins),
-                                    innerRadius: .ratio(0.5),
-                                    angularInset: 2
-                                )
-                                .foregroundStyle(by: .value("Joueur", entry.name))
-                                .annotation(position: .overlay, alignment: .center) {
-                                    Text(entry.name)
-                                        .font(.caption2)
-                                }
-                            }
-                        }
-                        .frame(height: 220)
-                    } else {
-                        Text("Aucune donnée sur la répartition des victoires.").foregroundStyle(.secondary)
-                    }
-                }
-
-            } else {
-                Text("Calcul des statistiques…").foregroundStyle(.secondary)
+            }
+            if let pid = bestPID { winsByPID[pid, default: 0] += 1 }
+        }
+        return winsByPID.compactMap { (pid, w) in
+            guard let n = nameByID[pid] else { return nil }
+            return VictoryEntry(id: pid, name: n, wins: w)
+        }
+        .sorted { lhs, rhs in
+            if lhs.wins != rhs.wins { return lhs.wins > rhs.wins } // score desc
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending // name asc
+        }
+    }
+    
+    /// Nombre total de Yams marqués par joueur (toutes parties complétées, toutes colonnes)
+    private func yamsCounts() -> [(id: UUID, name: String, count: Int)] {
+        guard !allGames.isEmpty else { return [] }
+        var byPID: [UUID: Int] = [:]
+        for g in allGames where g.statusOrDefault == .completed {
+            for sc in g.scorecards {
+                // Compte un Yams pour chaque colonne > 0
+                let ys = sc.yams
+                let c  = ys.filter { $0 > 0 }.count
+                if c > 0 { byPID[sc.playerID, default: 0] += c }
             }
         }
+        return byPID.compactMap { (pid, v) in
+            guard let n = nameByID[pid] else { return nil }
+            return (pid, n, v)
+        }
+        .sorted { lhs, rhs in
+            if lhs.count != rhs.count { return lhs.count > rhs.count } // score desc
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending // name asc
+        }
+    }
+    
+    /// Nombre total de primes Yams supplémentaires attribuées par joueur
+    private func extraYamsCounts() -> [(id: UUID, name: String, count: Int)] {
+        guard !allGames.isEmpty else { return [] }
+        var byPID: [UUID: Int] = [:]
+        for g in allGames where g.statusOrDefault == .completed {
+            for sc in g.scorecards {
+                let cnt = sc.extraYamsAwarded.filter { $0 }.count
+                if cnt > 0 { byPID[sc.playerID, default: 0] += cnt }
+            }
+        }
+        return byPID.compactMap { (pid, v) in
+            guard let n = nameByID[pid] else { return nil }
+            return (pid, n, v)
+        }
+        .sorted { lhs, rhs in
+            if lhs.count != rhs.count { return lhs.count > rhs.count }
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+    }
+    
+    // Totaux globaux (toutes parties complétées)
+    private var totalYamsAll: Int {
+        allGames
+            .filter { $0.statusOrDefault == .completed }
+            .flatMap { $0.scorecards }
+            .map { $0.yams.filter { $0 > 0 }.count }
+            .reduce(0, +)
+    }
+    
+    private var totalExtraYamsAll: Int {
+        allGames
+            .filter { $0.statusOrDefault == .completed }
+            .flatMap { $0.scorecards }
+            .map { $0.extraYamsAwarded.filter { $0 }.count }
+            .reduce(0, +)
+    }
+    
+    /// Taux de victoire par joueur = victoires / parties complétées jouées
+    private struct WinRateEntry: Identifiable { let id: UUID; let name: String; let rate: Double; let wins: Int; let played: Int }
+    private func winRates() -> [WinRateEntry] {
+        let victories = victoriesFromEngine() // [VictoryEntry] id,name,wins
+        guard !allGames.isEmpty else { return [] }
+        var playedByPID: [UUID: Int] = [:]
+        for g in allGames where g.statusOrDefault == .completed {
+            let pids = Set(g.scorecards.map { $0.playerID })
+            for pid in pids { playedByPID[pid, default: 0] += 1 }
+        }
+        var byPID: [UUID: WinRateEntry] = [:]
+        for (pid, played) in playedByPID {
+            let wins = victories.first(where: { $0.id == pid })?.wins ?? 0
+            let name = nameByID[pid] ?? "—"
+            let rate = played > 0 ? (Double(wins) / Double(played) * 100.0) : 0
+            byPID[pid] = WinRateEntry(id: pid, name: name, rate: rate, wins: wins, played: played)
+        }
+        return Array(byPID.values).sorted { $0.rate > $1.rate }
+    }
+    
+    // MARK: - Row helpers (consistent spacing + separators inside a card)
+    @ViewBuilder private func statRows(_ items: [(title: String, value: String)]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(items.indices, id: \.self) { i in
+                let it = items[i]
+                LabeledContent(it.title) { Text(it.value).bold() }
+                    .padding(.vertical, 10)
+                if i < items.count - 1 { Divider() }
+            }
+        }
+    }
+    
+    @ViewBuilder private func medalRow(rank: Int, color: Color, name: String, value: String) -> some View {
+        HStack {
+            Text(["🥇","🥈","🥉"][min(rank,2)])
+            Circle().fill(color).frame(width: 10, height: 10)
+            Text(name)
+            Spacer()
+            Text(value).bold()
+        }
+        .padding(.vertical, 10)
+    }
+    
+    private func bestScoreRecord() -> (value: Int, name: String) {
+        var bestScoreVal = 0
+        var bestScoreName = "—"
+        for g in allGames where g.statusOrDefault == .completed {
+            for sc in g.scorecards {
+                let t = StatsService.total(for: sc, game: g)
+                if t > bestScoreVal {
+                    bestScoreVal = t
+                    bestScoreName = nameByID[sc.playerID] ?? "—"
+                }
+            }
+        }
+        return (bestScoreVal, bestScoreName)
+    }
+    
+    var body: some View {
+        List {
+            // Section: Général
+            Section {
+                statRows([
+                    ("Parties (total)", "\(stats?.totalGames ?? 0)"),
+                    ("Parties terminées", "\(stats?.completedGames ?? 0)"),
+                    ("Joueurs", "\(stats?.totalPlayers ?? 0)"),
+                    ("Total Yams", "\(totalYamsAll)"),
+                    ("Total primes Yams", "\(totalExtraYamsAll)")
+                ])
+            } header: { Text("Général") }
+            .headerProminence(.increased)
+            
+            // Section: Records
+            Section {
+                // Compute records outside of control-flow inside ViewBuilder
+                let victories = victoriesFromEngine()
+                let mostWins = victories.max(by: { $0.wins < $1.wins })
+                let best = bestScoreRecord()
+                
+                statRows([
+                    ("Meilleur score", "\(best.value) — \(best.name)"),
+                    ("Plus de victoires", "\(mostWins?.wins ?? 0) — \(mostWins?.name ?? "—")")
+                ])
+            } header: { Text("Records") }
+            .headerProminence(.increased)
+            
+            // Section: Podium — Yams (top 3)
+            Section {
+                let top = Array(yamsCounts().prefix(3))
+                if top.isEmpty {
+                    Text("Aucun Yams enregistré.").foregroundStyle(.secondary).padding(.horizontal)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(Array(top.enumerated()), id: \.offset) { idx, e in
+                            medalRow(rank: idx, color: colorByID[e.id] ?? .gray, name: e.name, value: "\(e.count)")
+                            if idx < top.count - 1 { Divider() }
+                        }
+                    }
+                }
+            } header: { Text("Podium — Yams (top 3)") }
+            .headerProminence(.increased)
+            
+            // Section: Podium — Primes de Yams (top 3)
+            Section {
+                let top = Array(extraYamsCounts().prefix(3))
+                if top.isEmpty {
+                    Text("Aucune prime enregistrée.").foregroundStyle(.secondary).padding(.horizontal)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(Array(top.enumerated()), id: \.offset) { idx, e in
+                            medalRow(rank: idx, color: colorByID[e.id] ?? .gray, name: e.name, value: "\(e.count)")
+                            if idx < top.count - 1 { Divider() }
+                        }
+                    }
+                }
+            } header: { Text("Podium — Primes de Yams (top 3)") }
+            .headerProminence(.increased)
+            
+            // Section: Victoires par joueur (Bar Chart)
+            Section {
+                let victories = victoriesFromEngine()
+                if victories.isEmpty {
+                    Text("Aucune donnée de victoires par joueur.").foregroundStyle(.secondary)
+                } else {
+                    Chart {
+                        ForEach(victories) { entry in
+                            BarMark(
+                                x: .value("Joueur", entry.name),
+                                y: .value("Victoires", entry.wins)
+                            )
+                            .foregroundStyle(colorByID[entry.id] ?? .gray)
+                            .annotation(position: .top, alignment: .center) {
+                                Text("\(entry.wins)")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                    .frame(height: 220)
+                }
+            } header: { Text("Victoires par joueur") }
+            .headerProminence(.increased)
+            
+            // Section: Répartition des victoires (Pie Chart)
+            Section {
+                let victories = victoriesFromEngine()
+                if victories.isEmpty {
+                    Text("Aucune donnée de victoires par joueur.").foregroundStyle(.secondary)
+                } else {
+                    Chart {
+                        ForEach(victories) { entry in
+                            SectorMark(
+                                angle: .value("Victoires", entry.wins),
+                                innerRadius: .ratio(0.45),
+                                angularInset: 1
+                            )
+                            // Categorie pour la légende
+                            .foregroundStyle(by: .value("Joueur", entry.name))
+                            .annotation(position: .overlay) {
+                                Text("\(entry.wins)")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .shadow(radius: 1)
+                            }
+                        }
+                    }
+                    // Palette par joueur (nom -> couleur)
+                    .chartForegroundStyleScale(
+                        domain: victories.map { $0.name },
+                        range: victories.map { colorByID[$0.id] ?? .gray }
+                    )
+                    // Forcer l’affichage et placer la légende
+                    .chartLegend(position: .bottom, alignment: .center, spacing: 8)
+                    .frame(height: 220)
+                }
+            } header: { Text("Répartition des victoires") }
+            .headerProminence(.increased)
+            
+            // Section: Taux de victoire (en %)
+            Section {
+                let rates = winRates()
+                if rates.isEmpty {
+                    Text("Pas encore de statistiques suffisantes.").foregroundStyle(.secondary)
+                } else {
+                    Chart {
+                        ForEach(rates) { r in
+                            BarMark(
+                                x: .value("Joueur", r.name),
+                                y: .value("Taux", r.rate)
+                            )
+                            .foregroundStyle(colorByID[r.id] ?? .gray)
+                            .annotation(position: .top, alignment: .center) {
+                                Text("\(Int(r.rate.rounded()))%")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                    .frame(height: 220)
+                }
+            } header: { Text("Taux de victoire (%)") }
+            .headerProminence(.increased)
+            
+            // Section: Score moyen par joueur (Bar Chart)
+            Section {
+                let avgsFromStore: [AverageEntry] = statsStore.playerStats.map { AverageEntry(name: $0.name, avg: $0.avgScore) }
+                let avgs: [AverageEntry] = {
+                    if avgsFromStore.isEmpty || avgsFromStore.allSatisfy({ $0.avg == 0 }) {
+                        let engine = averagesFromEngine()
+                        return engine.isEmpty ? fallbackAverages : engine
+                    }
+                    return avgsFromStore
+                }()
+                let avgsSorted = avgs.sorted { lhs, rhs in
+                    if lhs.avg != rhs.avg { return lhs.avg > rhs.avg }
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+                if avgsSorted.isEmpty {
+                    Text("Pas encore assez de parties pour calculer des moyennes.").foregroundStyle(.secondary)
+                } else {
+                    Chart {
+                        ForEach(avgsSorted) { entry in
+                            let pid = allPlayers.first { ($0.nickname.isEmpty ? $0.name : $0.nickname) == entry.name }?.id
+                            BarMark(
+                                x: .value("Joueur", entry.name),
+                                y: .value("Moyenne", entry.avg)
+                            )
+                            .foregroundStyle(pid.flatMap { colorByID[$0] } ?? .gray)
+                            .annotation(position: .top, alignment: .center) {
+                                Text("\(Int(entry.avg.rounded()))")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                    .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                    .frame(height: 220)
+                }
+            } header: { Text("Score moyen par joueur") }
+            .headerProminence(.increased)
+        }
+        .listStyle(.insetGrouped)
     }
 }

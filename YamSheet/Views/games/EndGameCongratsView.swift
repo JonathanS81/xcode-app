@@ -30,7 +30,7 @@ struct EndGameCongratsView: View {
             .reduce(into: [String]()) { acc, name in if !acc.contains(name) { acc.append(name) } }
             .sorted()
         #if DEBUG
-        print("[EndGameCongrats] JSON détectés:", all)
+        DLog("[EndGameCongrats] JSON détectés:", all)
         #endif
         return all
     }

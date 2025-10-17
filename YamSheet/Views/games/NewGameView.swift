@@ -135,13 +135,13 @@ struct NewGameView: View {
             .sheet(item: $activeSheet) { which in
                 switch which {
                 case .newPlayer:
-                    // ► VERSION COMPLÈTE du formulaire joueur
                     NavigationStack {
-                        PlayerEditorView { newPlayer in
+                        NewPlayerView(onCreated: { newPlayer in
                             // auto-sélectionner le nouveau joueur
                             selectedPlayerIDs.insert(newPlayer.id)
                             activeSheet = nil
-                        }
+                        })
+                        .navigationTitle("Nouveau joueur")
                     }
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
