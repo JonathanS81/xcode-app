@@ -8,6 +8,12 @@
 import SwiftUI
 import SwiftData
 
+fileprivate enum ColumnRecenterMode: Int {
+    case fixedAll          = 0  // 1) colonnes toujours fixes
+    case fixedUpTo4ElsePin = 1  // 2) fixes si ≤4, sinon on recentre (actif en première)
+    case alwaysPinActive   = 2  // 3) toujours recentrer (actif en première)
+}
+
 struct GameDetailView: View {
     // Accès aux joueurs pour récupérer leur couleur
     @Query private var allPlayers: [Player]
@@ -16,6 +22,12 @@ struct GameDetailView: View {
     private func colorForPlayerID(_ id: UUID?) -> Color {
         guard let id, let p = allPlayers.first(where: { $0.id == id }) else { return .accentColor }
         return p.color
+    }
+    
+    @AppStorage("columnRecenterMode") private var columnRecenterModeRaw: Int = ColumnRecenterMode.fixedUpTo4ElsePin.rawValue
+
+    private var columnMode: ColumnRecenterMode {
+        ColumnRecenterMode(rawValue: columnRecenterModeRaw) ?? .fixedUpTo4ElsePin
     }
 
     // Si tu as un tableau d’IDs affichés (ex. displayPlayerIDs), utilitaire par index
@@ -77,7 +89,7 @@ struct GameDetailView: View {
     private let perColumnOuterPad: CGFloat = 4 // padding(.horizontal,2) visuel sur colonnes
     private let safetyGutter: CGFloat = 8      // marge anti-rognage
 
-    /// IDs des joueurs à afficher (actif d’abord)
+   /* /// IDs des joueurs à afficher (actif d’abord)
     private var displayPlayerIDs: [UUID] {
         var seen = Set<UUID>(), ids: [UUID] = []
         if let active = game.activePlayerID,
@@ -91,7 +103,45 @@ struct GameDetailView: View {
             ids.append(sc.playerID); seen.insert(sc.playerID)
         }
         return ids
+    } */
+    
+    /// Ordre de base : turnOrder → participantIDs → ordre des scorecards
+    private var basePlayerIDs: [UUID] {
+        let scIDs = game.scorecards.map { $0.playerID }
+        let scSet = Set(scIDs)
+
+        let order = game.turnOrder.filter { scSet.contains($0) }
+        if !order.isEmpty { return order }
+
+        let participants = game.participantIDs.filter { scSet.contains($0) }
+        if !participants.isEmpty { return participants }
+
+        return scIDs
     }
+
+    /// Applique éventuellement le "recentrement" (actif en premier) selon le mode
+    private var displayPlayerIDs: [UUID] {
+        let base = basePlayerIDs
+        guard let active = game.activePlayerID, base.contains(active) else {
+            return base
+        }
+
+        switch columnMode {
+        case .fixedAll:
+            // 1) Jamais de déplacement
+            return base
+
+        case .fixedUpTo4ElsePin:
+            // 2) Si ≤ 4 joueurs : fixe, sinon actif d’abord
+            guard base.count >= 5 else { return base }
+            return [active] + base.filter { $0 != active }
+
+        case .alwaysPinActive:
+            // 3) Toujours actif d’abord (comportement initial)
+            return [active] + base.filter { $0 != active }
+        }
+    }
+    
 
     /// Largeur mini d'une colonne joueur, calculée pour que 1–4 joueurs tiennent sans scroll.
     /// Bornée 50..64 pour conserver la lisibilité.
