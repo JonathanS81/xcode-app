@@ -1142,7 +1142,10 @@ struct GameDetailView: View {
             ForEach(displayPlayerIDs, id: \.self) { pid in
                 if let playerIdx = scorecardIndexByPlayerID[pid] {
                     let scBinding = $game.scorecards[playerIdx]
-                    let awarded = scBinding.wrappedValue.extraYamsAwarded[scoreColumnIndex]
+                    let awarded: Bool = {
+                        let arr = scBinding.wrappedValue.extraYamsAwarded
+                        return (scoreColumnIndex >= 0 && scoreColumnIndex < arr.count) ? arr[scoreColumnIndex] : false
+                    }()
                     let eligible = yamsAlreadyScored(scBinding.wrappedValue, col: scoreColumnIndex)
                     let isLockedExtra = scBinding.wrappedValue.isLocked(col: scoreColumnIndex, key: "ExtraYamsBonus")
                     let isActivePlayer = (game.activePlayerID == pid)

@@ -166,19 +166,22 @@ struct NewGameView: View {
                 }
             }
             // === Feuille d'ordre des joueurs (basée sur un payload pour éviter un tableau vide) ===
-            .sheet(item: $orderPayload) { payload in
+            .fullScreenCover(item: $orderPayload) { payload in
                 OrderSetupSheet(
                     players: payload.players,
                     idFor: { $0.id },
                     nameFor: { $0.nickname },
                     onConfirm: { orderedIDs in
-                        // Fermer la feuille et créer la partie avec l'ordre validé
-                        orderPayload = nil
                         finalizeGame(with: orderedIDs)
                     }
                 )
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
+                .interactiveDismissDisabled(true) // empêche le swipe-down qui ramènerait à l’écran précédent
+            }
+            .overlay {
+                // Rideau plein écran pour éviter de revoir brièvement le formulaire
+                if orderPayload != nil || createdGame != nil {
+                    Color(.systemBackground).ignoresSafeArea()
+                }
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .closeToGamesList)) { _ in
@@ -237,9 +240,15 @@ struct NewGameView: View {
         context.insert(game)
         try? context.save()
 
-        // Ferme la feuille et navigue
-        DispatchQueue.main.async {
+        // ⚑ Déclenche la navigation SANS animation (évite tout flash sous la cover)
+        let noAnim = Transaction(animation: nil)
+        withTransaction(noAnim) {
             createdGame = game
+        }
+
+        // ⚑ Puis ferme la cover juste après (on garde un micro-délai)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            orderPayload = nil
         }
     }
 }
