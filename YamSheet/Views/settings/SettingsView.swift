@@ -14,6 +14,9 @@ struct SettingsView: View {
     @AppStorage("tintLight") private var tintLight: Double = 0.25   // cellules vides
     @AppStorage("tintDark")  private var tintDark:  Double = 0.65   // cellules remplies
 
+    // Positionnement des colonnes (0=fixedAll, 1=fixedUpTo4ElsePin, 2=alwaysPinActive)
+    @AppStorage("columnRecenterMode") private var columnRecenterModeRaw: Int = 1
+
     
 
     var body: some View {
@@ -32,6 +35,30 @@ struct SettingsView: View {
                         value: $local.smallStraightScore, in: 0...100)
                     .disabled(!local.enableSmallStraight)
             }
+            Section("Feuille de score") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Picker("Position des colonnes", selection: $columnRecenterModeRaw) {
+                        Text("Colonnes fixes").tag(0)
+                        Text("Fixes jusqu’à 4 joueurs").tag(1)
+                        Text("Toujours colonne du joueur actif en 1re").tag(2)
+                    }
+                    .pickerStyle(.segmented)
+
+                    // Aide contextuelle
+                    Group {
+                        if columnRecenterModeRaw == 0 {
+                            Text("Les colonnes ne bougent jamais, quel que soit le nombre de joueurs.")
+                        } else if columnRecenterModeRaw == 1 {
+                            Text("Jusqu’à 4 joueurs : colonnes fixes. À partir de 5 : le joueur actif est affiché en première colonne.")
+                        } else {
+                            Text("Toujours : la colonne du joueur actif est affichée en première.")
+                        }
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                }
+            }
+            
             Section("App") {
                 Toggle("Mode sombre (préférence)", isOn: $local.darkMode)
                 VStack(alignment: .leading, spacing: 8) {

@@ -1,4 +1,3 @@
-
 //
 //  OrderSetupSheet.swift
 //  YamSheet
@@ -10,6 +9,7 @@ import SwiftUI
 
 struct OrderSetupSheet<PlayerType: Identifiable>: View {
     @Environment(\.dismiss) private var dismiss
+    @State private var isEditing: Bool = false
     let players: [PlayerType]
     let idFor: (PlayerType) -> UUID
     let nameFor: (PlayerType) -> String
@@ -33,12 +33,22 @@ struct OrderSetupSheet<PlayerType: Identifiable>: View {
         NavigationStack {
             List {
                 ForEach(order) { p in
-                    Text(nameFor(p))
+                    HStack {
+                        if let colorPlayer = (p as? Player)?.color {
+                            Circle()
+                                .fill(colorPlayer)
+                                .frame(width: 20, height: 20)
+                        }
+                        Text(nameFor(p))
+                            .font(.body)
+                            .padding(.leading, 4)
+                    }
                 }
                 .onMove { from, to in
                     order.move(fromOffsets: from, toOffset: to)
                 }
             }
+            .environment(\.editMode, Binding(get: { isEditing ? .active : .inactive }, set: { newValue in isEditing = (newValue == .active) }))
             .navigationTitle("Ordre des joueurs")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -54,7 +64,16 @@ struct OrderSetupSheet<PlayerType: Identifiable>: View {
                     }
                 }
                 ToolbarItem(placement: .bottomBar) {
-                    EditButton()
+                    HStack {
+                        Spacer()
+                        Button(isEditing ? "Terminer" : "Modifier") {
+                            withAnimation(.easeInOut) {
+                                isEditing.toggle()
+                            }
+                        }
+                        .font(.headline)
+                        Spacer()
+                    }
                 }
             }
         }

@@ -18,7 +18,7 @@ struct NewGameView: View {
     @Query                       private var settings: [AppSettings]
 
     // Sélections
-    @State private var selectedPlayerIDs: Set<Player.ID> = []
+    @State private var selectedPlayerIDs: Set<UUID> = []
     @State private var selectedNotationID: Notation.ID? = nil
 
     //Prime Xtra Yams
@@ -32,6 +32,10 @@ struct NewGameView: View {
 
     // Navigation directe vers la partie créée
     @State private var createdGame: Game? = nil
+
+    // Payload pour présenter la feuille d'ordre avec les joueurs déjà calculés.
+    private struct OrderPayload: Identifiable { let id = UUID(); let players: [Player] }
+    @State private var orderPayload: OrderPayload? = nil
 
     // Feuille modale unique
     @State private var activeSheet: CreationSheet?
@@ -161,6 +165,24 @@ struct NewGameView: View {
                     .presentationDragIndicator(.visible)
                 }
             }
+            // === Feuille d'ordre des joueurs (basée sur un payload pour éviter un tableau vide) ===
+            .fullScreenCover(item: $orderPayload) { payload in
+                OrderSetupSheet(
+                    players: payload.players,
+                    idFor: { $0.id },
+                    nameFor: { $0.nickname },
+                    onConfirm: { orderedIDs in
+                        finalizeGame(with: orderedIDs)
+                    }
+                )
+                .interactiveDismissDisabled(true) // empêche le swipe-down qui ramènerait à l’écran précédent
+            }
+            .overlay {
+                // Rideau plein écran pour éviter de revoir brièvement le formulaire
+                if orderPayload != nil || createdGame != nil {
+                    Color(.systemBackground).ignoresSafeArea()
+                }
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .closeToGamesList)) { _ in
             // Ferme la feuille de création si on termine/mete en pause depuis GameDetailView
@@ -170,16 +192,17 @@ struct NewGameView: View {
 
     // MARK: - Création de la partie
     private func createGame() {
-        guard let notation = selectedNotation else { return }
+        guard let _ = selectedNotation else { return }
         let chosenPlayers = players.filter { selectedPlayerIDs.contains($0.id) }
         guard !chosenPlayers.isEmpty else { return }
 
-        // Nom final
-        let nameToUse = gameName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? defaultGameName
-            : gameName
+        // Prépare un payload non optionnel pour la feuille d'ordre (évite un écran vide)
+        orderPayload = OrderPayload(players: chosenPlayers)
+    }
 
-        // Récupère/Crée AppSettings
+    /// Crée et enregistre la partie après validation de l'ordre des joueurs
+    private func finalizeGame(with orderedIDs: [UUID]) {
+        // 1) Récupère/Crée AppSettings
         let appSettings: AppSettings = {
             if let s = settings.first { return s }
             let s = AppSettings()
@@ -187,34 +210,45 @@ struct NewGameView: View {
             return s
         }()
 
-        // Snapshot de la notation (si Game attend un NotationSnapshot)
+        // 2) Récupère la notation sélectionnée (ou la première existante)
+        guard let notation = selectedNotation ?? notations.first else { return }
         let snapshot = notation.snapshot()
 
-        // IMPORTANT : utilise l'init réel de Game
-        let game = Game(settings: appSettings, notation: snapshot, columns: 1, comment: comment)
+        // 3) Nom final
+        let nameToUse = gameName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? defaultGameName
+            : gameName
 
-        // Nom + options par partie
+        // 4) Instancie Game
+        let game = Game(settings: appSettings, notation: snapshot, columns: 1, comment: comment)
         game.name = nameToUse
         game.enableChance = enableChance
         game.enableSmallStraight = enableSmallStraight
-        game.enableExtraYamsBonus = enableExtraYamsBonus   // Prime Yams supplémentaire
-        
-        // ►► AJOUT : enregistre les participants de CETTE partie
-        game.participantIDs = chosenPlayers.map(\.id)
+        game.enableExtraYamsBonus = enableExtraYamsBonus
+        game.participantIDs = orderedIDs
+        game.turnOrder = orderedIDs
+        game.currentTurnIndex = 0
 
-        // Scorecards pour chaque joueur
-        for p in chosenPlayers {
-            let sc = Scorecard(playerID: p.id, columns: 1)
+        // 5) Scorecards
+        for pid in orderedIDs {
+            let sc = Scorecard(playerID: pid, columns: 1)
             sc.game = game
             context.insert(sc)
         }
 
-        // Sauvegarde & navigation directe vers la feuille (sans retour)
+        // 6) Sauvegarde et navigation
         context.insert(game)
         try? context.save()
 
-        activeSheet = nil
-        createdGame = game
+        // ⚑ Déclenche la navigation SANS animation (évite tout flash sous la cover)
+        let noAnim = Transaction(animation: nil)
+        withTransaction(noAnim) {
+            createdGame = game
+        }
+
+        // ⚑ Puis ferme la cover juste après (on garde un micro-délai)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            orderPayload = nil
+        }
     }
 }
-
