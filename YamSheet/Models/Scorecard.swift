@@ -73,7 +73,6 @@ final class Scorecard: Identifiable {
         self.suiteData = initArray()
         self.petiteSuiteData = initArray()
         self.extraYamsAwarded = Array(repeating: false, count: columns)
-
         self.locksData = encodeJSON([String: Bool]())
     }
 
@@ -156,5 +155,10 @@ final class Scorecard: Identifiable {
         var l = locks
         l["\(col).\(key)"] = value
         locks = l
+    }
+
+    // MARK: - Computed score (accès facile pour les vues)
+    func computeTotal(using game: Game) -> Int {
+        StatsService.total(for: self, game: game, col: 0)
     }
 }
