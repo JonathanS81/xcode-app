@@ -25,7 +25,7 @@ struct PlayerStatsList: View {
                     Spacer()
                     VStack(alignment: .trailing) {
                         Text("Moy: \(Int(s.avgScore.rounded()))")
-                        Text("Best: \(s.bestScore)")
+                        Text("Meilleur : \(s.bestScore)")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }

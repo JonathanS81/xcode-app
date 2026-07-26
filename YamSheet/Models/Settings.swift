@@ -15,20 +15,27 @@ final class AppSettings {
     var enableSmallStraight: Bool
     var smallStraightScore: Int
     var darkMode: Bool
+    var scoreHelpEnabled: Bool? = nil
+
+    var showsScoreHelp: Bool {
+        get { scoreHelpEnabled ?? true }
+        set { scoreHelpEnabled = newValue }
+    }
     
     init(
         upperBonusThreshold: Int = 63,
         upperBonusValue: Int = 35,
         enableSmallStraight: Bool = true,
         smallStraightScore: Int = 10,
-        darkMode: Bool = false
+        darkMode: Bool = false,
+        scoreHelpEnabled: Bool = true
     ) {
         self.upperBonusThreshold = upperBonusThreshold
         self.upperBonusValue = upperBonusValue
         self.enableSmallStraight = enableSmallStraight
         self.smallStraightScore = smallStraightScore
         self.darkMode = darkMode
+        self.scoreHelpEnabled = scoreHelpEnabled
     }
 }
-
 

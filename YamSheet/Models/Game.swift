@@ -144,6 +144,7 @@ final class Game: Identifiable {
             middleBonusValue: 30,
             ruleBrelan: FigureRule(mode: .raw),
             ruleChance: FigureRule(mode: .raw),
+            chanceEnabled: enableChance,
             ruleFull: FigureRule(mode: .rawPlusFixed, fixedValue: 30),
             ruleSuite: FigureRule(mode: .fixed, fixedValue: 0),
             rulePetiteSuite: FigureRule(mode: .fixed, fixedValue: enableSmallStraight ? smallStraightScore : 0),
@@ -178,6 +179,7 @@ final class Game: Identifiable {
         self.upperBonusValue = notation.upperBonusValue
         self.enableSmallStraight = notation.resolvedSmallStraightEnabled
         self.smallStraightScore = notation.rulePetiteSuite.fixedValue
+        self.enableChance = notation.resolvedChanceEnabled
         self.notationData = (try? JSONEncoder().encode(notation)) ?? Data()
         self.createdAt = Date()
         self.comment = comment
@@ -190,12 +192,11 @@ final class Game: Identifiable {
 extension Game {
     func applyCreationOptions(
         name: String,
-        enableChance: Bool,
         notation: Notation
     ) {
         self.name = name
-        self.enableChance = enableChance
         let snap = notation.snapshot()
+        self.enableChance = snap.resolvedChanceEnabled
         self.enableSmallStraight = snap.resolvedSmallStraightEnabled
         self.smallStraightScore = snap.rulePetiteSuite.fixedValue
         self.notationData = (try? JSONEncoder().encode(snap)) ?? Data()

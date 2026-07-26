@@ -2,6 +2,8 @@ import SwiftUI
 import SwiftData
 
 struct ContentView: View {
+    @Query private var settings: [AppSettings]
+
     var body: some View {
         TabView {
             GamesListView()
@@ -19,6 +21,7 @@ struct ContentView: View {
                 .tabItem { Label(UIStrings.Common.settings, systemImage: "gear") }
             
         }
+        .preferredColorScheme(settings.first?.darkMode == true ? .dark : .light)
     }
 }
 

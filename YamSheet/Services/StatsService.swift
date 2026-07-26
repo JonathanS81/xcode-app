@@ -9,6 +9,55 @@ import Foundation
 
 enum StatsService {
 
+    // MARK: - Notations comparables
+
+    /// Regroupe les parties par nom de notation visible.
+    /// Les anciennes parties « Par défaut » correspondent à la notation
+    /// classique utilisée avant l’introduction des notations personnalisées.
+    static func notationOptions(games: [Game]) -> [StatsNotationOption] {
+        Set(
+            games
+                .filter { $0.statusOrDefault == .completed }
+                .map { notationName(for: $0) }
+        )
+        .map { StatsNotationOption(name: $0) }
+        .sorted {
+                $0.name.localizedCaseInsensitiveCompare($1.name)
+                    == .orderedAscending
+        }
+    }
+
+    static func completedGames(
+        from games: [Game],
+        notationName selectedNotationName: String?
+    ) -> [Game] {
+        self.games(from: games, notationName: selectedNotationName)
+            .filter { $0.statusOrDefault == .completed }
+    }
+
+    static func games(
+        from games: [Game],
+        notationName selectedNotationName: String?
+    ) -> [Game] {
+        games.filter {
+            selectedNotationName == nil
+                || notationName(for: $0) == selectedNotationName
+        }
+    }
+
+    static func notationName(for game: Game) -> String {
+        let name = game.notation.name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return "Classique" }
+        if name.compare(
+            "Par défaut",
+            options: [.caseInsensitive, .diacriticInsensitive]
+        ) == .orderedSame {
+            return "Classique"
+        }
+        return name
+    }
+
     // MARK: - Totaux
 
     /// Score total (toutes sections + extra yams)
@@ -70,7 +119,16 @@ enum StatsService {
         }
 
         // 2) Accumulation sans recalculer
-        var acc: [UUID: (scores: [Int], wins: Int, yamsHits: Int, yamsCount: Int, gamesPlayed: Int, name: String)] = [:]
+        var acc: [
+            UUID: (
+                scores: [(value: Int, notation: String)],
+                wins: Int,
+                yamsHits: Int,
+                yamsCount: Int,
+                gamesPlayed: Int,
+                name: String
+            )
+        ] = [:]
 
         for g in completed {
             let gid = ObjectIdentifier(g)
@@ -85,10 +143,22 @@ enum StatsService {
                 let pid = sc.playerID
                 let name = playersByID[pid]?.nickname ?? "—"
 
-                var e = acc[pid] ?? (scores: [], wins: 0, yamsHits: 0, yamsCount: 0, gamesPlayed: 0, name: name)
+                var e = acc[pid] ?? (
+                    scores: [],
+                    wins: 0,
+                    yamsHits: 0,
+                    yamsCount: 0,
+                    gamesPlayed: 0,
+                    name: name
+                )
                 let t = row[pid] ?? 0
 
-                e.scores.append(t)
+                e.scores.append(
+                    (
+                        value: t,
+                        notation: notationName(for: g)
+                    )
+                )
                 e.gamesPlayed += 1
                 if winners.contains(pid) { e.wins += 1 }
 
@@ -103,10 +173,11 @@ enum StatsService {
 
         return acc.map { (pid, s) in
             let played = s.gamesPlayed
-            let sum = s.scores.reduce(0, +)
+            let values = s.scores.map(\.value)
+            let sum = values.reduce(0, +)
             let avg = played > 0 ? Double(sum) / Double(played) : 0
-            let best = s.scores.max() ?? 0
-            let worst = s.scores.min() ?? 0
+            let best = values.max() ?? 0
+            let worst = values.min() ?? 0
             let yRate = played > 0 ? Double(s.yamsHits) / Double(played) : 0
 
             return PlayerStats(
@@ -116,13 +187,37 @@ enum StatsService {
                 wins: s.wins,
                 avgScore: avg,
                 bestScore: best,
+                bestScoreNotation: notationLabel(
+                    entries: s.scores,
+                    score: best
+                ),
                 worstScore: worst,
+                worstScoreNotation: notationLabel(
+                    entries: s.scores,
+                    score: worst
+                ),
                 yamsRate: yRate,
                 yamsCount: s.yamsCount,
-                scoresHistory: s.scores
+                scoresHistory: values
             )
         }
         .sorted { $0.bestScore > $1.bestScore }
+    }
+
+    private static func notationLabel(
+        entries: [(value: Int, notation: String)],
+        score: Int
+    ) -> String? {
+        let names = Set(
+            entries
+                .filter { $0.value == score }
+                .map(\.notation)
+        )
+        guard !names.isEmpty else { return nil }
+        return names.sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
+        .joined(separator: ", ")
     }
 
 

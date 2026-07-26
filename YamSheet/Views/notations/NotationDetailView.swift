@@ -21,31 +21,12 @@ struct NotationDetailView: View {
                 TextField("Nom de la notation", text: $notation.name)
             }
             
-            Section(UIStrings.Notation.tooltips) {
-                TextField(UIStrings.Notation.tooltipUpper, text: Binding(
-                    get: { notation.tooltipUpper ?? "" },
-                    set: { notation.tooltipUpper = $0 }
-                ))
-                TextField(UIStrings.Notation.tooltipMiddle, text: Binding(
-                    get: { notation.tooltipMiddle ?? "" },
-                    set: { notation.tooltipMiddle = $0 }
-                ))
-                TextField(UIStrings.Notation.tooltipBottom, text: Binding(
-                    get: { notation.tooltipBottom ?? "" },
-                    set: { notation.tooltipBottom = $0 }
-                ))
-            }
-            
             Section(UIStrings.Notation.upperSection) {
                 Stepper("\(UIStrings.Notation.upperBonusThresholdLabel) : \(notation.upperBonusThreshold)",
                         value: $notation.upperBonusThreshold, in: 0...200)
 
                 Stepper("\(UIStrings.Notation.upperBonusLabel) : \(notation.upperBonusValue)",
                         value: $notation.upperBonusValue, in: 0...200)
-
-                if let tip = notation.tooltipUpper, !tip.isEmpty {
-                    Text(tip).font(.footnote).foregroundStyle(.secondary)
-                }
             }
             
             Section(UIStrings.Notation.middleSection) {
@@ -73,98 +54,53 @@ struct NotationDetailView: View {
 
 
 
-            
-            Section("Section basse — règles") {
-                FigureRuleRow(title: "Brelan", rule: $notation.ruleBrelan)
-                FigureRuleRow(title: "Chance", rule: $notation.ruleChance)
-                FigureRuleRow(title: "Full", rule: $notation.ruleFull)
-
-                // Grande suite (5 dés) — config dédiée
-                Section(UIStrings.Notation.bigSuite) {
-                    Picker(UIStrings.Notation.modeLabel, selection: $notation.suiteBigModeRaw) {
-                        Text(UIStrings.Notation.suiteModeLabel(.singleFixed)).tag(SuiteBigMode.singleFixed.rawValue)
-                        Text(UIStrings.Notation.suiteModeLabel(.splitFixed)).tag(SuiteBigMode.splitFixed.rawValue)
-                    }
-
-                    if notation.suiteBigMode == .singleFixed {
-                        HStack {
-                            Text(UIStrings.Notation.valueFixed).font(.caption).foregroundStyle(.secondary)
-                            Spacer()
-                            CompactWheelPicker(value: $notation.suiteBigFixed,
-                                               range: 0...100,
-                                               title: UIStrings.Notation.valueFixed)
-                        }
-                    } else {
-                        HStack {
-                            Text(UIStrings.Notation.suite15Lbl).font(.caption).foregroundStyle(.secondary)
-                            Spacer()
-                            CompactWheelPicker(value: $notation.suiteBigFixed1to5,
-                                               range: 0...100,
-                                               title: UIStrings.Notation.suite15Lbl)
-                        }
-                        HStack {
-                            Text(UIStrings.Notation.suite20Lbl).font(.caption).foregroundStyle(.secondary)
-                            Spacer()
-                            CompactWheelPicker(value: $notation.suiteBigFixed2to6,
-                                               range: 0...100,
-                                               title: UIStrings.Notation.suite20Lbl)
-                        }
-                    }
-                }
-
-
-
-
-                Toggle(
-                    "Activer la petite suite",
-                    isOn: Binding(
+            Section("Suites") {
+                BigSuiteRuleBlock(
+                    modeRaw: $notation.suiteBigModeRaw,
+                    singleValue: $notation.suiteBigFixed,
+                    value1to5: $notation.suiteBigFixed1to5,
+                    value2to6: $notation.suiteBigFixed2to6
+                )
+                OptionalFigureRuleBlock(
+                    toggleTitle: "Activer la petite suite",
+                    scoreTitle: "Score petite suite",
+                    isEnabled: Binding(
                         get: { notation.isSmallStraightEnabled },
                         set: { notation.isSmallStraightEnabled = $0 }
-                    )
+                    ),
+                    rule: $notation.rulePetiteSuite
                 )
+            }
 
-                if notation.isSmallStraightEnabled {
-                    FigureRuleRow(
-                        title: "Score petite suite",
-                        rule: $notation.rulePetiteSuite
-                    )
-                }
-
-                
-                
+            Section("Figures") {
+                FigureRuleRow(title: "Brelan", rule: $notation.ruleBrelan)
+                OptionalFigureRuleBlock(
+                    toggleTitle: "Activer la Chance",
+                    scoreTitle: "Score Chance",
+                    isEnabled: Binding(
+                        get: { notation.isChanceEnabled },
+                        set: { notation.isChanceEnabled = $0 }
+                    ),
+                    rule: $notation.ruleChance
+                )
+                FigureRuleRow(title: "Full", rule: $notation.ruleFull)
                 FigureRuleRow(title: "Carré", rule: $notation.ruleCarre)
                 FigureRuleRow(title: "Yams", rule: $notation.ruleYams)
-
-                Section("Prime Yams supplémentaire") {
-                    Picker("Mode", selection: Binding(
+                ExtraYamsBonusBlock(
+                    mode: Binding(
                         get: { notation.extraYamsBonusMode },
                         set: { notation.extraYamsBonusMode = $0 }
-                    )) {
-                        ForEach(ExtraYamsBonusMode.allCases) { mode in
-                            Text(mode.label).tag(mode)
-                        }
-                    }
+                    ),
+                    value: $notation.extraYamsBonusValue
+                )
+            }
 
-                    if notation.extraYamsBonusMode != .disabled {
-                        HStack {
-                            Text("Montant par prime")
-                            Spacer()
-                            TextField("0", value: $notation.extraYamsBonusValue, format: .number)
-                                .keyboardType(.numberPad)
-                                .frame(width: 80)
-                                .multilineTextAlignment(.trailing)
-                        }
-                    }
-
-                    Text("Le premier Yams n’accorde pas de prime. En mode multiple, chaque Yams suivant peut recevoir la prime.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                .onChange(of: notation.extraYamsBonusModeRaw) { _, _ in
-                    try? context.save()
-                }
-
-                
+            Section {
+                NotationHelpEditor(notation: notation)
+            } header: {
+                Text("Aides de la feuille de score")
+            } footer: {
+                Text("Seules les aides renseignées pourront être affichées pendant une partie.")
             }
         }
         .navigationTitle(notation.name)
@@ -182,6 +118,63 @@ struct NotationDetailView: View {
     }
 }
 
+struct NotationHelpEditor: View {
+    @Bindable var notation: Notation
+
+    var body: some View {
+        DisclosureGroup("Section haute") {
+            helpField("Aide de la section", key: .sectionUpper)
+            helpField("As", key: .ones)
+            helpField("Deux", key: .twos)
+            helpField("Trois", key: .threes)
+            helpField("Quatre", key: .fours)
+            helpField("Cinq", key: .fives)
+            helpField("Six", key: .sixes)
+        }
+
+        DisclosureGroup("Section milieu") {
+            helpField("Aide de la section", key: .sectionMiddle)
+            helpField("Max", key: .max)
+            helpField("Min", key: .min)
+        }
+
+        DisclosureGroup("Section basse") {
+            helpField("Aide de la section", key: .sectionBottom)
+            helpField("Brelan", key: .brelan)
+            helpField("Chance", key: .chance)
+            helpField("Full", key: .full)
+            helpField("Grande suite", key: .suite)
+            helpField("Petite suite", key: .petiteSuite)
+            helpField("Carré", key: .carre)
+            helpField("Yams", key: .yams)
+            helpField("Prime Yams supplémentaire", key: .extraYams)
+        }
+    }
+
+    private func helpBinding(for key: ScoreHelpKey) -> Binding<String> {
+        Binding(
+            get: { notation.helpTextValue(for: key) },
+            set: { notation.setHelpText($0, for: key) }
+        )
+    }
+
+    private func helpField(_ title: String, key: ScoreHelpKey) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            TextField(
+                "Texte d’aide (optionnel)",
+                text: helpBinding(for: key),
+                axis: .vertical
+            )
+            .lineLimit(2...4)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
 
 
 struct FigureRuleRow: View {
@@ -190,19 +183,16 @@ struct FigureRuleRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(title)
-                Spacer()
-                Picker("", selection: Binding(
-                    get: { rule.mode.rawValue },
-                    set: { rule.mode = BottomRuleMode(rawValue: $0) ?? .raw }
-                )) {
-                    ForEach(BottomRuleMode.allCases) { m in
-                        Text(UIStrings.Notation.bottomLabel(m)).tag(m.rawValue)
-                    }
+            Picker(title, selection: Binding(
+                get: { rule.mode.rawValue },
+                set: { rule.mode = BottomRuleMode(rawValue: $0) ?? .raw }
+            )) {
+                ForEach(BottomRuleMode.allCases) { mode in
+                    Text(UIStrings.Notation.bottomLabel(mode))
+                        .tag(mode.rawValue)
                 }
-                .pickerStyle(.menu)
             }
+            .pickerStyle(.menu)
 
             if rule.mode == .fixed {
                 HStack {
@@ -231,14 +221,122 @@ struct FigureRuleRow: View {
                 }
             }
 
-            TextField(UIStrings.Notation.figureTooltipPlaceholder, text: Binding(
-                get: { rule.tooltip ?? "" },
-                set: { rule.tooltip = $0 }
-            ))
-            .font(.caption)
-            .foregroundStyle(.secondary)
         }
         .animation(.default, value: rule.mode)
     }
 }
 
+struct OptionalFigureRuleBlock: View {
+    let toggleTitle: String
+    let scoreTitle: String
+    @Binding var isEnabled: Bool
+    @Binding var rule: FigureRule
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(toggleTitle, isOn: $isEnabled)
+
+            if isEnabled {
+                FigureRuleRow(title: scoreTitle, rule: $rule)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .animation(.default, value: isEnabled)
+    }
+}
+
+struct BigSuiteRuleBlock: View {
+    @Binding var modeRaw: String
+    @Binding var singleValue: Int
+    @Binding var value1to5: Int
+    @Binding var value2to6: Int
+
+    private var mode: SuiteBigMode {
+        SuiteBigMode(rawValue: modeRaw) ?? .singleFixed
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Picker(UIStrings.Notation.bigSuite, selection: $modeRaw) {
+                Text(UIStrings.Notation.suiteModeLabel(.singleFixed))
+                    .tag(SuiteBigMode.singleFixed.rawValue)
+                Text(UIStrings.Notation.suiteModeLabel(.splitFixed))
+                    .tag(SuiteBigMode.splitFixed.rawValue)
+            }
+            .pickerStyle(.menu)
+
+            if mode == .singleFixed {
+                valueRow(
+                    title: UIStrings.Notation.valueFixed,
+                    value: $singleValue
+                )
+            } else {
+                valueRow(
+                    title: UIStrings.Notation.suite15Lbl,
+                    value: $value1to5
+                )
+                valueRow(
+                    title: UIStrings.Notation.suite20Lbl,
+                    value: $value2to6
+                )
+            }
+        }
+        .animation(.default, value: modeRaw)
+    }
+
+    private func valueRow(
+        title: String,
+        value: Binding<Int>
+    ) -> some View {
+        HStack {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            CompactWheelPicker(
+                value: value,
+                range: 0...100,
+                title: title
+            )
+        }
+    }
+}
+
+struct ExtraYamsBonusBlock: View {
+    @Binding var mode: ExtraYamsBonusMode
+    @Binding var value: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Picker("Prime de Yams", selection: $mode) {
+                ForEach(ExtraYamsBonusMode.allCases) { option in
+                    Text(option.label).tag(option)
+                }
+            }
+            .pickerStyle(.menu)
+
+            if mode != .disabled {
+                HStack {
+                    Text("Montant par prime")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    CompactWheelPicker(
+                        value: $value,
+                        range: 0...200,
+                        title: "Montant par prime"
+                    )
+                }
+            }
+
+            Text(
+                mode == .multiple
+                    ? "Chaque Yams après le premier peut recevoir une prime."
+                    : "Le premier Yams n’accorde pas de prime."
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+        .animation(.default, value: mode)
+    }
+}

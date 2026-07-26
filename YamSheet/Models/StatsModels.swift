@@ -17,12 +17,19 @@ struct PlayerStats: Identifiable, Hashable {
 
     let avgScore: Double
     let bestScore: Int
+    let bestScoreNotation: String?
     let worstScore: Int
+    let worstScoreNotation: String?
     let yamsRate: Double
     let yamsCount: Int
 
     // 👉 Historique des scores pour les graphiques
     let scoresHistory: [Int]
+}
+
+struct StatsNotationOption: Identifiable, Hashable {
+    var id: String { name }
+    let name: String
 }
 
 struct AppStats {

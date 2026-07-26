@@ -59,6 +59,30 @@ enum ExtraYamsBonusMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum ScoreHelpKey: String, Codable, CaseIterable, Identifiable {
+    case sectionUpper
+    case ones
+    case twos
+    case threes
+    case fours
+    case fives
+    case sixes
+    case sectionMiddle
+    case max
+    case min
+    case sectionBottom
+    case brelan
+    case chance
+    case full
+    case suite
+    case petiteSuite
+    case carre
+    case yams
+    case extraYams
+
+    var id: String { rawValue }
+}
+
 // Les règles compactées (snapshot) qu’on figera sur Game
 struct NotationSnapshot: Codable {
     // Nom + tooltips globaux
@@ -79,6 +103,7 @@ struct NotationSnapshot: Codable {
     // Section basse : règles par figure
     var ruleBrelan: FigureRule
     var ruleChance: FigureRule
+    var chanceEnabled: Bool? = nil
     var ruleFull: FigureRule
     var ruleSuite: FigureRule
     var rulePetiteSuite: FigureRule
@@ -88,6 +113,10 @@ struct NotationSnapshot: Codable {
 
     var resolvedSmallStraightEnabled: Bool {
         smallStraightEnabled ?? true
+    }
+
+    var resolvedChanceEnabled: Bool {
+        chanceEnabled ?? true
     }
     
     // ...
@@ -101,9 +130,46 @@ struct NotationSnapshot: Codable {
     var extraYamsBonusEnabled: Bool
     var extraYamsBonusValue: Int
     var extraYamsBonusMode: ExtraYamsBonusMode? = nil
+    var scoreHelpTexts: [String: String]? = nil
 
     var resolvedExtraYamsBonusMode: ExtraYamsBonusMode {
         extraYamsBonusMode ?? (extraYamsBonusEnabled ? .single : .disabled)
+    }
+
+    func helpText(for key: ScoreHelpKey) -> String? {
+        if let text = normalizedHelpText(scoreHelpTexts?[key.rawValue]) {
+            return text
+        }
+
+        switch key {
+        case .sectionUpper:
+            return normalizedHelpText(tooltipUpper)
+        case .sectionMiddle:
+            return normalizedHelpText(tooltipMiddle)
+        case .sectionBottom:
+            return normalizedHelpText(tooltipBottom)
+        case .brelan:
+            return normalizedHelpText(ruleBrelan.tooltip)
+        case .chance:
+            return normalizedHelpText(ruleChance.tooltip)
+        case .full:
+            return normalizedHelpText(ruleFull.tooltip)
+        case .suite:
+            return normalizedHelpText(ruleSuite.tooltip)
+        case .petiteSuite:
+            return normalizedHelpText(rulePetiteSuite.tooltip)
+        case .carre:
+            return normalizedHelpText(ruleCarre.tooltip)
+        case .yams:
+            return normalizedHelpText(ruleYams.tooltip)
+        default:
+            return nil
+        }
+    }
+
+    private func normalizedHelpText(_ text: String?) -> String? {
+        let normalized = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return normalized.isEmpty ? nil : normalized
     }
 }
 
@@ -115,6 +181,7 @@ final class Notation {
     var tooltipUpper: String? = nil
     var tooltipMiddle: String? = nil
     var tooltipBottom: String? = nil
+    var scoreHelpTextsData: Data? = nil
     
     // section haute
     var upperBonusThreshold: Int = 63
@@ -128,6 +195,7 @@ final class Notation {
     // section basse : règles encodées en JSON
     var ruleBrelanData: Data = Data()
     var ruleChanceData: Data = Data()
+    var chanceEnabled: Bool? = nil
     var ruleFullData: Data = Data()
     var ruleSuiteData: Data = Data()
     var rulePetiteSuiteData: Data = Data()
@@ -170,6 +238,13 @@ final class Notation {
     private static let decoder = JSONDecoder()
     private static func encRule(_ v: FigureRule) -> Data { (try? encoder.encode(v)) ?? Data() }
     private static func decRule(_ d: Data) -> FigureRule { (try? decoder.decode(FigureRule.self, from: d)) ?? FigureRule() }
+    private static func encHelpTexts(_ value: [String: String]) -> Data? {
+        try? encoder.encode(value)
+    }
+    private static func decHelpTexts(_ data: Data?) -> [String: String] {
+        guard let data else { return [:] }
+        return (try? decoder.decode([String: String].self, from: data)) ?? [:]
+    }
 
     
     // Computed
@@ -185,6 +260,10 @@ final class Notation {
     var ruleChance: FigureRule {
         get { Self.decRule(ruleChanceData) }
         set { ruleChanceData = Self.encRule(newValue) }
+    }
+    var isChanceEnabled: Bool {
+        get { chanceEnabled ?? true }
+        set { chanceEnabled = newValue }
     }
     var ruleFull: FigureRule {
         get { Self.decRule(ruleFullData) }
@@ -211,6 +290,97 @@ final class Notation {
         set { ruleYamsData = Self.encRule(newValue) }
     }
 
+    var scoreHelpTexts: [String: String] {
+        get { Self.decHelpTexts(scoreHelpTextsData) }
+        set { scoreHelpTextsData = newValue.isEmpty ? nil : Self.encHelpTexts(newValue) }
+    }
+
+    func helpTextValue(for key: ScoreHelpKey) -> String {
+        if let text = normalizedHelpText(scoreHelpTexts[key.rawValue]) {
+            return text
+        }
+
+        switch key {
+        case .sectionUpper:
+            return normalizedHelpText(tooltipUpper) ?? ""
+        case .sectionMiddle:
+            return normalizedHelpText(tooltipMiddle) ?? ""
+        case .sectionBottom:
+            return normalizedHelpText(tooltipBottom) ?? ""
+        case .brelan:
+            return normalizedHelpText(ruleBrelan.tooltip) ?? ""
+        case .chance:
+            return normalizedHelpText(ruleChance.tooltip) ?? ""
+        case .full:
+            return normalizedHelpText(ruleFull.tooltip) ?? ""
+        case .suite:
+            return normalizedHelpText(ruleSuite.tooltip) ?? ""
+        case .petiteSuite:
+            return normalizedHelpText(rulePetiteSuite.tooltip) ?? ""
+        case .carre:
+            return normalizedHelpText(ruleCarre.tooltip) ?? ""
+        case .yams:
+            return normalizedHelpText(ruleYams.tooltip) ?? ""
+        default:
+            return ""
+        }
+    }
+
+    func setHelpText(_ text: String, for key: ScoreHelpKey) {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var values = scoreHelpTexts
+        if normalized.isEmpty {
+            values.removeValue(forKey: key.rawValue)
+        } else {
+            values[key.rawValue] = text
+        }
+        scoreHelpTexts = values
+
+        switch key {
+        case .sectionUpper:
+            tooltipUpper = normalized.isEmpty ? nil : text
+        case .sectionMiddle:
+            tooltipMiddle = normalized.isEmpty ? nil : text
+        case .sectionBottom:
+            tooltipBottom = normalized.isEmpty ? nil : text
+        case .brelan:
+            var rule = ruleBrelan
+            rule.tooltip = normalized.isEmpty ? nil : text
+            ruleBrelan = rule
+        case .chance:
+            var rule = ruleChance
+            rule.tooltip = normalized.isEmpty ? nil : text
+            ruleChance = rule
+        case .full:
+            var rule = ruleFull
+            rule.tooltip = normalized.isEmpty ? nil : text
+            ruleFull = rule
+        case .suite:
+            var rule = ruleSuite
+            rule.tooltip = normalized.isEmpty ? nil : text
+            ruleSuite = rule
+        case .petiteSuite:
+            var rule = rulePetiteSuite
+            rule.tooltip = normalized.isEmpty ? nil : text
+            rulePetiteSuite = rule
+        case .carre:
+            var rule = ruleCarre
+            rule.tooltip = normalized.isEmpty ? nil : text
+            ruleCarre = rule
+        case .yams:
+            var rule = ruleYams
+            rule.tooltip = normalized.isEmpty ? nil : text
+            ruleYams = rule
+        default:
+            break
+        }
+    }
+
+    private func normalizedHelpText(_ text: String?) -> String? {
+        let normalized = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return normalized.isEmpty ? nil : normalized
+    }
+
     
     init(
         name: String,
@@ -224,6 +394,7 @@ final class Notation {
         middleBonusValue: Int = 30,
         ruleBrelan: FigureRule = FigureRule(),
         ruleChance: FigureRule = FigureRule(),
+        chanceEnabled: Bool = true,
         ruleFull: FigureRule = FigureRule(mode: .rawPlusFixed, fixedValue: 30),
         ruleSuite: FigureRule = FigureRule(mode: .fixed, fixedValue: 15),
         rulePetiteSuite: FigureRule = FigureRule(mode: .fixed, fixedValue: 10),
@@ -244,6 +415,7 @@ final class Notation {
         self.middleBonusValue = middleBonusValue
         self.ruleBrelanData = Self.encRule(ruleBrelan)
         self.ruleChanceData = Self.encRule(ruleChance)
+        self.chanceEnabled = chanceEnabled
         self.ruleFullData   = Self.encRule(ruleFull)
         self.ruleSuiteData  = Self.encRule(ruleSuite)
         self.rulePetiteSuiteData = Self.encRule(rulePetiteSuite)
@@ -277,6 +449,7 @@ final class Notation {
             middleBonusValue: middleBonusValue,
             ruleBrelan: ruleBrelan,
             ruleChance: ruleChance,
+            chanceEnabled: isChanceEnabled,
             ruleFull: ruleFull,
             ruleSuite: ruleSuite,
             rulePetiteSuite: rulePetiteSuite,
@@ -291,7 +464,8 @@ final class Notation {
             // puis les bonus Yams
             extraYamsBonusEnabled: extraYamsBonusEnabled,
             extraYamsBonusValue: extraYamsBonusValue,
-            extraYamsBonusMode: extraYamsBonusMode
+            extraYamsBonusMode: extraYamsBonusMode,
+            scoreHelpTexts: scoreHelpTexts
         )
     }
 
