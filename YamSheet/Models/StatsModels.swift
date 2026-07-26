@@ -19,6 +19,7 @@ struct PlayerStats: Identifiable, Hashable {
     let bestScore: Int
     let worstScore: Int
     let yamsRate: Double
+    let yamsCount: Int
 
     // 👉 Historique des scores pour les graphiques
     let scoresHistory: [Int]

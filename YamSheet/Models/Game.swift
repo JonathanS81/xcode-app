@@ -46,6 +46,11 @@ final class Game: Identifiable {
     // Prime Extra Yams
     var enableExtraYamsBonus: Bool = true
 
+    var extraYamsBonusMode: ExtraYamsBonusMode {
+        guard enableExtraYamsBonus else { return .disabled }
+        return notation.resolvedExtraYamsBonusMode
+    }
+
     // Options de figures (par partie)
     var enableChance: Bool = true
 
@@ -142,6 +147,7 @@ final class Game: Identifiable {
             ruleFull: FigureRule(mode: .rawPlusFixed, fixedValue: 30),
             ruleSuite: FigureRule(mode: .fixed, fixedValue: 0),
             rulePetiteSuite: FigureRule(mode: .fixed, fixedValue: enableSmallStraight ? smallStraightScore : 0),
+            smallStraightEnabled: enableSmallStraight,
             ruleCarre: FigureRule(mode: .rawPlusFixed, fixedValue: 40),
             ruleYams: FigureRule(mode: .rawPlusFixed, fixedValue: 50),
             suiteBigMode: .splitFixed,
@@ -166,12 +172,12 @@ final class Game: Identifiable {
     }
 
     // MARK: - Init
-    init(settings: AppSettings, notation: NotationSnapshot, columns: Int = 1, comment: String = "") {
+    init(settings _: AppSettings, notation: NotationSnapshot, columns: Int = 1, comment: String = "") {
         self.id = UUID()
-        self.upperBonusThreshold = settings.upperBonusThreshold
-        self.upperBonusValue = settings.upperBonusValue
-        self.enableSmallStraight = settings.enableSmallStraight
-        self.smallStraightScore = settings.smallStraightScore
+        self.upperBonusThreshold = notation.upperBonusThreshold
+        self.upperBonusValue = notation.upperBonusValue
+        self.enableSmallStraight = notation.resolvedSmallStraightEnabled
+        self.smallStraightScore = notation.rulePetiteSuite.fixedValue
         self.notationData = (try? JSONEncoder().encode(notation)) ?? Data()
         self.createdAt = Date()
         self.comment = comment
@@ -185,13 +191,13 @@ extension Game {
     func applyCreationOptions(
         name: String,
         enableChance: Bool,
-        enableSmallStraight: Bool,
         notation: Notation
     ) {
         self.name = name
         self.enableChance = enableChance
-        self.enableSmallStraight = enableSmallStraight
         let snap = notation.snapshot()
+        self.enableSmallStraight = snap.resolvedSmallStraightEnabled
+        self.smallStraightScore = snap.rulePetiteSuite.fixedValue
         self.notationData = (try? JSONEncoder().encode(snap)) ?? Data()
     }
 }

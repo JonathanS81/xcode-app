@@ -91,4 +91,6 @@ extension Player {
         guard let data = avatarImageData else { return nil }
         return UIImage(data: data)
     }
+    
+    
 }

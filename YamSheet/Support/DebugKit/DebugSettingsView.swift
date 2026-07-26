@@ -145,6 +145,7 @@ struct DebugEndGameDemoView: View {
             ruleFull: FigureRule(mode: .rawPlusFixed, fixedValue: 30),
             ruleSuite: FigureRule(mode: .fixed, fixedValue: 0),
             rulePetiteSuite: FigureRule(mode: .fixed, fixedValue: settings.enableSmallStraight ? settings.smallStraightScore : 0),
+            smallStraightEnabled: settings.enableSmallStraight,
             ruleCarre: FigureRule(mode: .rawPlusFixed, fixedValue: 40),
             ruleYams: FigureRule(mode: .rawPlusFixed, fixedValue: 50),
             suiteBigMode: .splitFixed,
@@ -190,4 +191,3 @@ struct DebugEndGameDemoView: View {
     }
 }
 #endif
-

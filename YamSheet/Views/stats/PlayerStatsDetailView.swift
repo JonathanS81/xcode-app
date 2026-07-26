@@ -57,7 +57,10 @@ struct PlayerStatsDetailView: View {
         allGames.reduce(0) { acc, g in
             acc + g.scorecards
                 .filter { $0.playerID == stats.playerID }
-                .map { sc in sc.extraYamsAwarded.reduce(0) { $0 + ($1 ? 1 : 0) } }
+                .map { sc in
+                    (0..<max(sc.columns, sc.extraYamsAwarded.count))
+                        .reduce(0) { $0 + sc.extraYamsAwardsCount(col: $1) }
+                }
                 .reduce(0, +)
         }
     }
@@ -169,6 +172,7 @@ private struct KPIGrid: View {
             }
             HStack(spacing: 12) {
                 KPI(title: "Taux Yams", value: "\(Int(stats.yamsRate * 100))%")
+                KPI(title: "Yams", value: "\(stats.yamsCount)")
                 KPI(title: "Primes Yams", value: "\(extraYamsCount)")
             }
         }

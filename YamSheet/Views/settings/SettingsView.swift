@@ -23,18 +23,6 @@ struct SettingsView: View {
         
         
         Form {
-            Section(UIStrings.Game.upperSection) {
-                Stepper(UIStrings.Notation.upperBonusThresholdLabel+" : \(local.upperBonusThreshold)",
-                        value: $local.upperBonusThreshold, in: 0...200)
-                Stepper(UIStrings.Notation.upperBonusLabel+" : \(local.upperBonusValue)",
-                        value: $local.upperBonusValue, in: 0...200)
-            }
-            Section(UIStrings.Game.bottomSection) {
-                Toggle("Petite suite activée", isOn: $local.enableSmallStraight)
-                Stepper("Score petite suite : \(local.smallStraightScore)",
-                        value: $local.smallStraightScore, in: 0...100)
-                    .disabled(!local.enableSmallStraight)
-            }
             Section("Feuille de score") {
                 VStack(alignment: .leading, spacing: 8) {
                     Picker("Position des colonnes", selection: $columnRecenterModeRaw) {
@@ -137,10 +125,6 @@ struct SettingsView: View {
 
     private func save() {
         if let s = settings.first {
-            s.upperBonusThreshold = local.upperBonusThreshold
-            s.upperBonusValue = local.upperBonusValue
-            s.enableSmallStraight = local.enableSmallStraight
-            s.smallStraightScore = local.smallStraightScore
             s.darkMode = local.darkMode
             try? context.save()
         } else {
@@ -149,4 +133,3 @@ struct SettingsView: View {
         }
     }
 }
-

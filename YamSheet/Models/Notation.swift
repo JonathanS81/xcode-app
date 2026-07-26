@@ -43,6 +43,22 @@ enum SuiteBigMode: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum ExtraYamsBonusMode: String, Codable, CaseIterable, Identifiable {
+    case disabled
+    case single
+    case multiple
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .disabled: return "Non"
+        case .single: return "Oui, unique"
+        case .multiple: return "Oui, multiple"
+        }
+    }
+}
+
 // Les règles compactées (snapshot) qu’on figera sur Game
 struct NotationSnapshot: Codable {
     // Nom + tooltips globaux
@@ -66,8 +82,13 @@ struct NotationSnapshot: Codable {
     var ruleFull: FigureRule
     var ruleSuite: FigureRule
     var rulePetiteSuite: FigureRule
+    var smallStraightEnabled: Bool? = nil
     var ruleCarre: FigureRule
     var ruleYams: FigureRule
+
+    var resolvedSmallStraightEnabled: Bool {
+        smallStraightEnabled ?? true
+    }
     
     // ...
     var suiteBigMode: SuiteBigMode
@@ -79,6 +100,11 @@ struct NotationSnapshot: Codable {
     // Bonus Yams supplémentaire (optionnel)
     var extraYamsBonusEnabled: Bool
     var extraYamsBonusValue: Int
+    var extraYamsBonusMode: ExtraYamsBonusMode? = nil
+
+    var resolvedExtraYamsBonusMode: ExtraYamsBonusMode {
+        extraYamsBonusMode ?? (extraYamsBonusEnabled ? .single : .disabled)
+    }
 }
 
 @Model
@@ -105,6 +131,7 @@ final class Notation {
     var ruleFullData: Data = Data()
     var ruleSuiteData: Data = Data()
     var rulePetiteSuiteData: Data = Data()
+    var smallStraightEnabled: Bool? = nil
     var ruleCarreData: Data = Data()
     var ruleYamsData: Data = Data()
 
@@ -122,6 +149,21 @@ final class Notation {
     // Bonus Yams en plus
     var extraYamsBonusEnabled: Bool = false
     var extraYamsBonusValue: Int = 0
+    var extraYamsBonusModeRaw: String? = nil
+
+    var extraYamsBonusMode: ExtraYamsBonusMode {
+        get {
+            if let raw = extraYamsBonusModeRaw,
+               let mode = ExtraYamsBonusMode(rawValue: raw) {
+                return mode
+            }
+            return extraYamsBonusEnabled ? .single : .disabled
+        }
+        set {
+            extraYamsBonusModeRaw = newValue.rawValue
+            extraYamsBonusEnabled = newValue != .disabled
+        }
+    }
     
     // Helpers d’encodage (statiques pour pouvoir être appelés dans init AVANT que self soit complet)
     private static let encoder = JSONEncoder()
@@ -156,6 +198,10 @@ final class Notation {
         get { Self.decRule(rulePetiteSuiteData) }
         set { rulePetiteSuiteData = Self.encRule(newValue) }
     }
+    var isSmallStraightEnabled: Bool {
+        get { smallStraightEnabled ?? true }
+        set { smallStraightEnabled = newValue }
+    }
     var ruleCarre: FigureRule {
         get { Self.decRule(ruleCarreData) }
         set { ruleCarreData = Self.encRule(newValue) }
@@ -181,6 +227,7 @@ final class Notation {
         ruleFull: FigureRule = FigureRule(mode: .rawPlusFixed, fixedValue: 30),
         ruleSuite: FigureRule = FigureRule(mode: .fixed, fixedValue: 15),
         rulePetiteSuite: FigureRule = FigureRule(mode: .fixed, fixedValue: 10),
+        smallStraightEnabled: Bool = true,
         ruleCarre: FigureRule = FigureRule(mode: .rawPlusFixed, fixedValue: 40),
         ruleYams: FigureRule = FigureRule(mode: .rawPlusFixed, fixedValue: 50),
         extraYamsBonusEnabled: Bool = false,
@@ -200,6 +247,7 @@ final class Notation {
         self.ruleFullData   = Self.encRule(ruleFull)
         self.ruleSuiteData  = Self.encRule(ruleSuite)
         self.rulePetiteSuiteData = Self.encRule(rulePetiteSuite)
+        self.smallStraightEnabled = smallStraightEnabled
         self.ruleCarreData  = Self.encRule(ruleCarre)
         self.ruleYamsData   = Self.encRule(ruleYams)
         self.suiteBigModeRaw = SuiteBigMode.singleFixed.rawValue
@@ -209,6 +257,7 @@ final class Notation {
         
         self.extraYamsBonusEnabled = extraYamsBonusEnabled
         self.extraYamsBonusValue = extraYamsBonusValue
+        self.extraYamsBonusModeRaw = nil
     }
     
 
@@ -231,6 +280,7 @@ final class Notation {
             ruleFull: ruleFull,
             ruleSuite: ruleSuite,
             rulePetiteSuite: rulePetiteSuite,
+            smallStraightEnabled: isSmallStraightEnabled,
             ruleCarre: ruleCarre,
             ruleYams: ruleYams,
             // ← important : les champs SuiteBig APRÈS ruleYams
@@ -240,10 +290,9 @@ final class Notation {
             suiteBigFixed2to6: suiteBigFixed2to6,
             // puis les bonus Yams
             extraYamsBonusEnabled: extraYamsBonusEnabled,
-            extraYamsBonusValue: extraYamsBonusValue
+            extraYamsBonusValue: extraYamsBonusValue,
+            extraYamsBonusMode: extraYamsBonusMode
         )
     }
 
 }
-
-

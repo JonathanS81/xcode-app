@@ -81,65 +81,13 @@ struct AppStatsView: View {
     }
     
     // Best-effort extraction of a scorecard's final total across various model versions
-    private func finalTotal(from sc: Scorecard) -> Int {
-        let m = Mirror(reflecting: sc)
-        
-        // 1) Direct well-known integer fields
-        if let v = m.children.first(where: { $0.label == "totalAll" })?.value as? Int { return v }
-        if let v = m.children.first(where: { $0.label == "grandTotal" })?.value as? Int { return v }
-        if let v = m.children.first(where: { $0.label == "total" })?.value as? Int { return v }
-        if let v = m.children.first(where: { $0.label == "overallTotal" })?.value as? Int { return v }
-        
-        // 2) Arrays potentially containing totals – take the last or the max
-        if let arr = m.children.first(where: { $0.label == "totals" })?.value as? [Int] { return arr.last ?? 0 }
-        if let arr = m.children.first(where: { $0.label == "allTotals" })?.value as? [Int] { return arr.last ?? 0 }
-        if let arr = m.children.first(where: { $0.label == "sectionTotals" })?.value as? [Int] { return arr.reduce(0, +) }
-        
-        // 3) Any Int field whose name contains "total" or "sum" – keep the max
-        var best = 0
-        for c in m.children {
-            guard let label = c.label?.lowercased() else { continue }
-            if let v = c.value as? Int, (label.contains("total") || label.contains("sum")) {
-                best = max(best, v)
-            }
-            if let arr = c.value as? [Int], (label.contains("total") || label.contains("sum")) {
-                if let last = arr.last { best = max(best, last) }
-            }
-        }
-        
-        // 4) Numeric strings that look like totals (e.g., "123" or "Total: 245") – take the max number found
-        if best == 0 {
-            var numericMax = 0
-            for c in m.children {
-                guard let label = c.label?.lowercased() else { continue }
-                if label.contains("total"), let s = c.value as? String {
-                    let digits = s.filter { $0.isNumber }
-                    if let v = Int(digits) { numericMax = max(numericMax, v) }
-                }
-            }
-            best = max(best, numericMax)
-        }
-        return best
-    }
-    
+    private func finalTotal(from sc: Scorecard, game: Game) -> Int {
+          return StatsService.total(for: sc, game: game)
+      }
     private var fallbackAverages: [AverageEntry] {
-        guard !allGames.isEmpty else { return [] }
-        var sums: [UUID: Int] = [:]
-        var counts: [UUID: Int] = [:]
-        for g in allGames where g.statusOrDefault == .completed {
-            for sc in g.scorecards {
-                let total = finalTotal(from: sc)
-                sums[sc.playerID, default: 0] += total
-                counts[sc.playerID, default: 0] += 1
-            }
-        }
-        let nameByID = Dictionary(uniqueKeysWithValues: allPlayers.map { ($0.id, $0.nickname) })
-        return sums.compactMap { (pid, sum) in
-            guard let c = counts[pid], c > 0, let name = nameByID[pid] else { return nil }
-            return AverageEntry(name: name, avg: Double(sum) / Double(c))
-        }.sorted { $0.avg > $1.avg }
-    }
-    
+         // Utiliser directement averagesFromEngine()
+         averagesFromEngine()
+     }
     // Compute averages directly from the canonical score engine (StatsService/StatsEngine)
     private func averagesFromEngine() -> [AverageEntry] {
         guard !allGames.isEmpty else { return [] }
@@ -157,6 +105,7 @@ struct AppStatsView: View {
             guard let c = counts[pid], c > 0, let name = nameByID[pid] else { return nil }
             return AverageEntry(name: name, avg: Double(sum) / Double(c))
         }
+        .sorted { $0.avg > $1.avg }  // ← Ajouter le tri
     }
     
     /// Victoires par joueur, calculées à partir des parties complétées avec le moteur de score
@@ -167,7 +116,7 @@ struct AppStatsView: View {
             var bestPID: UUID? = nil
             var bestScore = Int.min
             for sc in g.scorecards {
-                let total = StatsService.total(for: sc, game: g)
+                let total = finalTotal(from: sc, game: g)
                 if total > bestScore {
                     bestScore = total
                     bestPID = sc.playerID
@@ -191,9 +140,7 @@ struct AppStatsView: View {
         var byPID: [UUID: Int] = [:]
         for g in allGames where g.statusOrDefault == .completed {
             for sc in g.scorecards {
-                // Compte un Yams pour chaque colonne > 0
-                let ys = sc.yams
-                let c  = ys.filter { $0 > 0 }.count
+                let c = StatsService.yamsCount(for: sc)
                 if c > 0 { byPID[sc.playerID, default: 0] += c }
             }
         }
@@ -213,7 +160,8 @@ struct AppStatsView: View {
         var byPID: [UUID: Int] = [:]
         for g in allGames where g.statusOrDefault == .completed {
             for sc in g.scorecards {
-                let cnt = sc.extraYamsAwarded.filter { $0 }.count
+                let cnt = (0..<max(sc.columns, sc.extraYamsAwarded.count))
+                    .reduce(0) { $0 + sc.extraYamsAwardsCount(col: $1) }
                 if cnt > 0 { byPID[sc.playerID, default: 0] += cnt }
             }
         }
@@ -232,7 +180,7 @@ struct AppStatsView: View {
         allGames
             .filter { $0.statusOrDefault == .completed }
             .flatMap { $0.scorecards }
-            .map { $0.yams.filter { $0 > 0 }.count }
+            .map { StatsService.yamsCount(for: $0) }
             .reduce(0, +)
     }
     
@@ -240,7 +188,10 @@ struct AppStatsView: View {
         allGames
             .filter { $0.statusOrDefault == .completed }
             .flatMap { $0.scorecards }
-            .map { $0.extraYamsAwarded.filter { $0 }.count }
+            .map { sc in
+                (0..<max(sc.columns, sc.extraYamsAwarded.count))
+                    .reduce(0) { $0 + sc.extraYamsAwardsCount(col: $1) }
+            }
             .reduce(0, +)
     }
     
