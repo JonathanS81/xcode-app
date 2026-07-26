@@ -126,6 +126,7 @@ enum DevSeed {
             ruleFull: FigureRule(mode: .rawPlusFixed, fixedValue: 30),
             ruleSuite: FigureRule(mode: .fixed, fixedValue: 0), // non utilisé avec SuiteBig
             rulePetiteSuite: FigureRule(mode: .fixed, fixedValue: s.enableSmallStraight ? s.smallStraightScore : 0),
+            smallStraightEnabled: s.enableSmallStraight,
             ruleCarre: FigureRule(mode: .rawPlusFixed, fixedValue: 40),
             ruleYams: FigureRule(mode: .rawPlusFixed, fixedValue: 50),
             // Grande suite en split

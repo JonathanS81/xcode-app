@@ -17,6 +17,41 @@ enum StatsService {
         StatsEngine.total(sc: sc, game: game, col: col)
     }
 
+    // MARK: - Yams
+
+    /// Nombre réel de lancers de Yams enregistrés sur une feuille.
+    /// Une déclaration et une prime rattachées à la même catégorie ne comptent qu'une fois.
+    static func yamsCount(for sc: Scorecard, col: Int? = nil) -> Int {
+        let columns = col.map { [$0] } ?? Array(0..<max(sc.columns, sc.extraYamsAwarded.count))
+        var count = 0
+
+        for column in columns {
+            if sc.yams.indices.contains(column), sc.yams[column] > 0 {
+                count += 1
+            }
+
+            let prefix = "\(column)."
+            let declaredKeys = Set(
+                sc.declaredYams.compactMap { entry -> String? in
+                    guard entry.value, entry.key.hasPrefix(prefix) else { return nil }
+                    return String(entry.key.dropFirst(prefix.count))
+                }
+            )
+            count += declaredKeys.filter { $0 != "yams" }.count
+
+            let representedKeys = declaredKeys.union(
+                sc.yams.indices.contains(column) && sc.yams[column] > 0 ? ["yams"] : []
+            )
+            for source in sc.extraYamsAwardSources(col: column) {
+                if !representedKeys.contains(source) {
+                    count += 1
+                }
+            }
+        }
+
+        return count
+    }
+
     // MARK: - Stats par joueur
 
     /// Calcule les statistiques par joueur à partir des parties **terminées**.
@@ -35,7 +70,7 @@ enum StatsService {
         }
 
         // 2) Accumulation sans recalculer
-        var acc: [UUID: (scores: [Int], wins: Int, yamsHits: Int, gamesPlayed: Int, name: String)] = [:]
+        var acc: [UUID: (scores: [Int], wins: Int, yamsHits: Int, yamsCount: Int, gamesPlayed: Int, name: String)] = [:]
 
         for g in completed {
             let gid = ObjectIdentifier(g)
@@ -50,16 +85,16 @@ enum StatsService {
                 let pid = sc.playerID
                 let name = playersByID[pid]?.nickname ?? "—"
 
-                var e = acc[pid] ?? (scores: [], wins: 0, yamsHits: 0, gamesPlayed: 0, name: name)
+                var e = acc[pid] ?? (scores: [], wins: 0, yamsHits: 0, yamsCount: 0, gamesPlayed: 0, name: name)
                 let t = row[pid] ?? 0
 
                 e.scores.append(t)
                 e.gamesPlayed += 1
                 if winners.contains(pid) { e.wins += 1 }
 
-                // Yams > 0 en colonne 0 ?
-                let yamsVal = (0 < sc.yams.count) ? sc.yams[0] : -1
-                if yamsVal > 0 { e.yamsHits += 1 }
+                let gameYamsCount = yamsCount(for: sc)
+                e.yamsCount += gameYamsCount
+                if gameYamsCount > 0 { e.yamsHits += 1 }
 
                 e.name = name
                 acc[pid] = e
@@ -83,6 +118,7 @@ enum StatsService {
                 bestScore: best,
                 worstScore: worst,
                 yamsRate: yRate,
+                yamsCount: s.yamsCount,
                 scoresHistory: s.scores
             )
         }
@@ -92,18 +128,15 @@ enum StatsService {
 
     // MARK: - Extra Yams (primes)
 
-    /// Nombre de primes de Yams par joueur (compte les parties où une prime a été attribuée au moins une fois).
-    /// Hypothèse de modèle: `Scorecard.extraYams` contient, par colonne, un entier > 0 si une prime a été attribuée.
+    /// Nombre de primes de Yams par joueur.
     static func yamsPrimesByPlayer(games: [Game], col: Int = 0) -> [UUID: Int] {
         let completed = games.filter { $0.statusOrDefault == .completed }
         var acc: [UUID: Int] = [:]
         for g in completed {
             for sc in g.scorecards {
-                // Safe lookup via reflection: if Scorecard has a property named "extraYams" of type [Int], use it.
-                let mirror = Mirror(reflecting: sc)
-                let extra: [Int]? = mirror.children.first(where: { $0.label == "extraYams" })?.value as? [Int]
-                if let arr = extra, col < arr.count, arr[col] > 0 {
-                    acc[sc.playerID, default: 0] += 1
+                let count = sc.extraYamsAwardsCount(col: col)
+                if count > 0 {
+                    acc[sc.playerID, default: 0] += count
                 }
             }
         }

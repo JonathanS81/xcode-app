@@ -113,26 +113,48 @@ struct NotationEditorView: View {
                     FigureRuleRow(title: "Brelan",       rule: $local.ruleBrelan)
                     FigureRuleRow(title: "Chance",       rule: $local.ruleChance)
                     FigureRuleRow(title: "Full",         rule: $local.ruleFull)
-                    FigureRuleRow(title: "Petite suite", rule: $local.rulePetiteSuite)
+                    Toggle(
+                        "Activer la petite suite",
+                        isOn: Binding(
+                            get: { local.isSmallStraightEnabled },
+                            set: { local.isSmallStraightEnabled = $0 }
+                        )
+                    )
+                    if local.isSmallStraightEnabled {
+                        FigureRuleRow(
+                            title: "Score petite suite",
+                            rule: $local.rulePetiteSuite
+                        )
+                    }
                     FigureRuleRow(title: "Carré",        rule: $local.ruleCarre)
                     FigureRuleRow(title: "Yams",         rule: $local.ruleYams)
 
                     Section("Prime Yams supplémentaire") {
-                        HStack {
-                            Text("Montant")
-                            Spacer()
-                            TextField("0", value: $local.extraYamsBonusValue, format: .number)
-                                .keyboardType(.numberPad)
-                                .frame(width: 80)
-                                .multilineTextAlignment(.trailing)
+                        Picker("Mode", selection: Binding(
+                            get: { local.extraYamsBonusMode },
+                            set: { local.extraYamsBonusMode = $0 }
+                        )) {
+                            ForEach(ExtraYamsBonusMode.allCases) { mode in
+                                Text(mode.label).tag(mode)
+                            }
                         }
-                        Text("Astuce : mettre 0 pour désactiver cette prime dans la notation. L’activation finale se fait à la création d’une partie.")
+
+                        if local.extraYamsBonusMode != .disabled {
+                            HStack {
+                                Text("Montant par prime")
+                                Spacer()
+                                TextField("0", value: $local.extraYamsBonusValue, format: .number)
+                                    .keyboardType(.numberPad)
+                                    .frame(width: 80)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                        }
+
+                        Text("Le premier Yams n’accorde pas de prime. En mode multiple, chaque Yams suivant peut recevoir la prime.")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
-                    .onChange(of: local.extraYamsBonusValue) { oldVal, newVal in
-                        local.extraYamsBonusEnabled = newVal > 0
-                    }                }
+                }
 
                 // Tooltip bas (affichage)
                 if let tip = local.tooltipBottom, !tip.isEmpty {

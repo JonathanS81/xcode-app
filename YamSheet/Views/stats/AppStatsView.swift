@@ -140,9 +140,7 @@ struct AppStatsView: View {
         var byPID: [UUID: Int] = [:]
         for g in allGames where g.statusOrDefault == .completed {
             for sc in g.scorecards {
-                // Compte un Yams pour chaque colonne > 0
-                let ys = sc.yams
-                let c  = ys.filter { $0 > 0 }.count
+                let c = StatsService.yamsCount(for: sc)
                 if c > 0 { byPID[sc.playerID, default: 0] += c }
             }
         }
@@ -162,7 +160,8 @@ struct AppStatsView: View {
         var byPID: [UUID: Int] = [:]
         for g in allGames where g.statusOrDefault == .completed {
             for sc in g.scorecards {
-                let cnt = sc.extraYamsAwarded.filter { $0 }.count
+                let cnt = (0..<max(sc.columns, sc.extraYamsAwarded.count))
+                    .reduce(0) { $0 + sc.extraYamsAwardsCount(col: $1) }
                 if cnt > 0 { byPID[sc.playerID, default: 0] += cnt }
             }
         }
@@ -181,7 +180,7 @@ struct AppStatsView: View {
         allGames
             .filter { $0.statusOrDefault == .completed }
             .flatMap { $0.scorecards }
-            .map { $0.yams.filter { $0 > 0 }.count }
+            .map { StatsService.yamsCount(for: $0) }
             .reduce(0, +)
     }
     
@@ -189,7 +188,10 @@ struct AppStatsView: View {
         allGames
             .filter { $0.statusOrDefault == .completed }
             .flatMap { $0.scorecards }
-            .map { $0.extraYamsAwarded.filter { $0 }.count }
+            .map { sc in
+                (0..<max(sc.columns, sc.extraYamsAwarded.count))
+                    .reduce(0) { $0 + sc.extraYamsAwardsCount(col: $1) }
+            }
             .reduce(0, +)
     }
     

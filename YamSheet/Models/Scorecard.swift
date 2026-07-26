@@ -24,6 +24,12 @@ final class Scorecard: Identifiable {
     // Champ actuel utilisé par le code
     var extraYamsAwarded: [Bool] = []
 
+    // Déclarations ajoutées après la première version de l'app.
+    // Les champs optionnels permettent d'ouvrir les anciennes bases SwiftData sans migration destructive.
+    var declaredYamsData: Data?
+    var extraYamsSourceData: Data?
+    var extraYamsAwardsData: Data?
+
     @Relationship(deleteRule: .nullify, inverse: \Game.scorecards) var game: Game?
 
     // Stored as Data (JSON)
@@ -73,6 +79,9 @@ final class Scorecard: Identifiable {
         self.suiteData = initArray()
         self.petiteSuiteData = initArray()
         self.extraYamsAwarded = Array(repeating: false, count: columns)
+        self.declaredYamsData = nil
+        self.extraYamsSourceData = nil
+        self.extraYamsAwardsData = nil
         self.locksData = encodeJSON([String: Bool]())
     }
 
@@ -147,6 +156,36 @@ final class Scorecard: Identifiable {
         set { locksData = encodeJSON(newValue) }
     }
 
+    /// Cases hors ligne Yams explicitement déclarées comme provenant de cinq dés identiques.
+    /// Clé stockée : "<colonne>.<catégorie>".
+    var declaredYams: [String: Bool] {
+        get {
+            guard let data = declaredYamsData else { return [:] }
+            return decodeJSON([String: Bool].self, from: data)
+        }
+        set { declaredYamsData = encodeJSON(newValue) }
+    }
+
+    /// Catégorie du score auquel une prime est rattachée, indexée par colonne.
+    /// Ce lien empêche de compter deux fois un lancer à la fois déclaré et primé.
+    var extraYamsSources: [String: String] {
+        get {
+            guard let data = extraYamsSourceData else { return [:] }
+            return decodeJSON([String: String].self, from: data)
+        }
+        set { extraYamsSourceData = encodeJSON(newValue) }
+    }
+
+    /// Sources des primes attribuées, regroupées par colonne.
+    /// Une source correspond à la catégorie remplie pendant le lancer primé.
+    var extraYamsAwards: [String: [String]] {
+        get {
+            guard let data = extraYamsAwardsData else { return [:] }
+            return (try? JSONDecoder().decode([String: [String]].self, from: data)) ?? [:]
+        }
+        set { extraYamsAwardsData = encodeJSON(newValue) }
+    }
+
     // Helpers
     func isLocked(col: Int, key: String) -> Bool {
         locks["\(col).\(key)"] ?? false
@@ -155,6 +194,81 @@ final class Scorecard: Identifiable {
         var l = locks
         l["\(col).\(key)"] = value
         locks = l
+    }
+
+    func isDeclaredYams(col: Int, key: String) -> Bool {
+        declaredYams["\(col).\(key)"] ?? false
+    }
+
+    func setDeclaredYams(_ value: Bool, col: Int, key: String) {
+        var values = declaredYams
+        values["\(col).\(key)"] = value
+        declaredYams = values
+    }
+
+    func extraYamsSource(col: Int) -> String? {
+        extraYamsSources[String(col)]
+    }
+
+    func setExtraYamsSource(_ key: String?, col: Int) {
+        var values = extraYamsSources
+        values[String(col)] = key
+        extraYamsSources = values
+    }
+
+    func extraYamsAwardSources(col: Int) -> [String] {
+        let columnKey = String(col)
+        if let stored = extraYamsAwards[columnKey] {
+            return stored
+        }
+
+        let hasLegacyAward = extraYamsAwarded.indices.contains(col)
+            && extraYamsAwarded[col]
+        guard hasLegacyAward else { return [] }
+        return [extraYamsSource(col: col) ?? "__legacy__"]
+    }
+
+    func extraYamsAwardsCount(col: Int) -> Int {
+        extraYamsAwardSources(col: col).count
+    }
+
+    func hasExtraYamsAward(col: Int, source: String) -> Bool {
+        extraYamsAwardSources(col: col).contains(source)
+    }
+
+    func addExtraYamsAward(col: Int, source: String) {
+        var values = extraYamsAwards
+        var sources = extraYamsAwardSources(col: col)
+        guard !sources.contains(source) else { return }
+        sources.append(source)
+        values[String(col)] = sources
+        extraYamsAwards = values
+
+        if col >= extraYamsAwarded.count {
+            extraYamsAwarded.append(contentsOf:
+                Array(repeating: false, count: col - extraYamsAwarded.count + 1)
+            )
+        }
+        extraYamsAwarded[col] = true
+    }
+
+    func removeExtraYamsAward(col: Int, source: String? = nil) {
+        var values = extraYamsAwards
+        var sources = extraYamsAwardSources(col: col)
+        if let source {
+            sources.removeAll { $0 == source }
+        } else if !sources.isEmpty {
+            sources.removeLast()
+        }
+        values[String(col)] = sources
+        extraYamsAwards = values
+
+        if extraYamsAwarded.indices.contains(col) {
+            extraYamsAwarded[col] = !sources.isEmpty
+        }
+        if sources.isEmpty {
+            setExtraYamsSource(nil, col: col)
+        }
     }
 
     // MARK: - Computed score (accès facile pour les vues)

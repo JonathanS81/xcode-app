@@ -17,11 +17,14 @@ struct StatsEngine {
     static func extraYamsBonusAmount(sc: Scorecard, game: Game, col: Int) -> Int {
         guard game.enableExtraYamsBonus,                        // partie
               game.notation.extraYamsBonusValue > 0,            // notation (0 = off)
-              sc.extraYamsAwarded.indices.contains(col),
-              sc.extraYamsAwarded[col] else {
+              game.extraYamsBonusMode != .disabled else {
             return 0
         }
-        return game.notation.extraYamsBonusValue
+        let awarded = sc.extraYamsAwardsCount(col: col)
+        let effectiveCount = game.extraYamsBonusMode == .single
+            ? min(1, awarded)
+            : awarded
+        return effectiveCount * game.notation.extraYamsBonusValue
     }
 
     // -1 => non rempli ; 0 => barré ; sinon valeur
@@ -97,7 +100,7 @@ struct StatsEngine {
         let carre        = applyFigureRule(sc.carre[col],        rule: n.ruleCarre)
         let yams         = applyFigureRule(sc.yams[col],         rule: n.ruleYams)
 
-        // >>> prime centralisée ici, UNE SEULE FOIS
+        // Prime centralisée ici : valeur unitaire × nombre d'attributions autorisées.
         let extra        = extraYamsBonusAmount(sc: sc, game: game, col: col)
 
         return brelan + chance + full + suite + petiteSuite + carre + yams + extra
@@ -135,7 +138,14 @@ struct StatsEngine {
         case .carre:       return "Carré — " + desc(n.ruleCarre)
         case .yams:
             let base = "Yams — " + desc(n.ruleYams)
-            return n.extraYamsBonusEnabled ? base + " (+\(n.extraYamsBonusValue) bonus si Yams)" : base
+            switch n.resolvedExtraYamsBonusMode {
+            case .disabled:
+                return base
+            case .single:
+                return base + " (+\(n.extraYamsBonusValue), une seule prime supplémentaire)"
+            case .multiple:
+                return base + " (+\(n.extraYamsBonusValue) pour chaque Yams après le premier)"
+            }
         case .suiteBig:
             switch n.suiteBigMode {
             case .singleFixed:

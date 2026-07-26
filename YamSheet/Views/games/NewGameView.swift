@@ -11,6 +11,7 @@ private enum CreationSheet: Identifiable {
 struct NewGameView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
+    private let gameNameMaxLength = 40
 
     // Données
     @Query(sort: \Player.nickname) private var players: [Player]
@@ -21,12 +22,8 @@ struct NewGameView: View {
     @State private var selectedPlayerIDs: Set<UUID> = []
     @State private var selectedNotationID: Notation.ID? = nil
 
-    //Prime Xtra Yams
-    @State private var enableExtraYamsBonus: Bool = true
-    
     // Options
     @State private var enableChance: Bool = true
-    @State private var enableSmallStraight: Bool = true
     @State private var comment: String = ""
     @State private var gameName: String = ""
 
@@ -55,9 +52,27 @@ struct NewGameView: View {
         NavigationStack {
             Form {
                 // --- NOM EN PREMIER ---
-                Section("Nom de la partie") {
-                    TextField("Nom :", text: $gameName)
+                Section {
+                    TextField(
+                        "Nom :",
+                        text: Binding(
+                            get: { gameName },
+                            set: { gameName = String($0.prefix(gameNameMaxLength)) }
+                        )
+                    )
                         .textInputAutocapitalization(.words)
+                } header: {
+                    HStack {
+                        Text("Nom de la partie")
+                        Spacer()
+                        Text("\(gameName.count)/\(gameNameMaxLength)")
+                            .monospacedDigit()
+                            .foregroundStyle(
+                                gameName.count == gameNameMaxLength
+                                    ? Color.orange
+                                    : Color.secondary
+                            )
+                    }
                 }
 
                 // --- JOUEURS (interrupteurs isOn) ---
@@ -108,8 +123,18 @@ struct NewGameView: View {
                 // --- OPTIONS ---
                 Section("Options") {
                     Toggle("Inclure Chance", isOn: $enableChance)
-                    Toggle("Activer Petite suite", isOn: $enableSmallStraight)
-                    Toggle("Activer Prime Yams supplémentaire", isOn: $enableExtraYamsBonus)
+                    if let notation = selectedNotation {
+                        LabeledContent(
+                            "Petite suite",
+                            value: notation.isSmallStraightEnabled
+                                ? "Activée"
+                                : "Désactivée"
+                        )
+                        LabeledContent(
+                            "Prime Yams supplémentaire",
+                            value: notation.extraYamsBonusMode.label
+                        )
+                    }
                     TextField("Commentaire", text: $comment)
                 }
 
@@ -223,8 +248,9 @@ struct NewGameView: View {
         let game = Game(settings: appSettings, notation: snapshot, columns: 1, comment: comment)
         game.name = nameToUse
         game.enableChance = enableChance
-        game.enableSmallStraight = enableSmallStraight
-        game.enableExtraYamsBonus = enableExtraYamsBonus
+        game.enableSmallStraight = snapshot.resolvedSmallStraightEnabled
+        game.smallStraightScore = snapshot.rulePetiteSuite.fixedValue
+        game.enableExtraYamsBonus = snapshot.resolvedExtraYamsBonusMode != .disabled
         game.participantIDs = orderedIDs
         game.turnOrder = orderedIDs
         game.currentTurnIndex = 0

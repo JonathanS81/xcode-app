@@ -115,8 +115,20 @@ struct NotationDetailView: View {
 
 
 
-                // Petite suite (4 dés) : on garde FigureRule (.fixed recommandé)
-                FigureRuleRow(title: "Petite suite", rule: $notation.rulePetiteSuite)
+                Toggle(
+                    "Activer la petite suite",
+                    isOn: Binding(
+                        get: { notation.isSmallStraightEnabled },
+                        set: { notation.isSmallStraightEnabled = $0 }
+                    )
+                )
+
+                if notation.isSmallStraightEnabled {
+                    FigureRuleRow(
+                        title: "Score petite suite",
+                        rule: $notation.rulePetiteSuite
+                    )
+                }
 
                 
                 
@@ -124,20 +136,31 @@ struct NotationDetailView: View {
                 FigureRuleRow(title: "Yams", rule: $notation.ruleYams)
 
                 Section("Prime Yams supplémentaire") {
-                    HStack {
-                        Text("Montant")
-                        Spacer()
-                        TextField("0", value: $notation.extraYamsBonusValue, format: .number)
-                            .keyboardType(.numberPad)
-                            .frame(width: 80)
-                            .multilineTextAlignment(.trailing)
+                    Picker("Mode", selection: Binding(
+                        get: { notation.extraYamsBonusMode },
+                        set: { notation.extraYamsBonusMode = $0 }
+                    )) {
+                        ForEach(ExtraYamsBonusMode.allCases) { mode in
+                            Text(mode.label).tag(mode)
+                        }
                     }
-                    Text("Astuce : mettre 0 pour désactiver la prime dans la notation. L’activation finale se fait lors de la création d’une partie.")
+
+                    if notation.extraYamsBonusMode != .disabled {
+                        HStack {
+                            Text("Montant par prime")
+                            Spacer()
+                            TextField("0", value: $notation.extraYamsBonusValue, format: .number)
+                                .keyboardType(.numberPad)
+                                .frame(width: 80)
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
+
+                    Text("Le premier Yams n’accorde pas de prime. En mode multiple, chaque Yams suivant peut recevoir la prime.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
-                .onChange(of: notation.extraYamsBonusValue) { oldVal, newVal in
-                    notation.extraYamsBonusEnabled = newVal > 0
+                .onChange(of: notation.extraYamsBonusModeRaw) { _, _ in
                     try? context.save()
                 }
 
@@ -218,6 +241,4 @@ struct FigureRuleRow: View {
         .animation(.default, value: rule.mode)
     }
 }
-
-
 

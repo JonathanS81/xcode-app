@@ -4,60 +4,100 @@ import SwiftData
 struct GamesListView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Game.createdAt, order: .reverse) private var games: [Game]
-    @State private var showingNewGame = false
+    @Query(sort: \Player.nickname) private var players: [Player]
 
-    // Filtre : Actives (en cours + en pause) / Terminées
+    @State private var showingNewGame = false
+    @State private var searchText = ""
+    @State private var selectedPlayerID: UUID?
+
     enum Filter: String, CaseIterable, Identifiable {
-        case active    = "Actives"
-        case completed = "Terminées"
+        case active = "Actives"
+        case completed = "Historique"
+
         var id: String { rawValue }
     }
+
     @State private var filter: Filter = .active
 
-    private var filteredGames: [Game] {
-        games.filter { g in
-            switch filter {
-            case .active:
-                return g.statusOrDefault == .inProgress || g.statusOrDefault == .paused
-            case .completed:
-                return g.statusOrDefault == .completed
-            }
+    private var playersByID: [UUID: Player] {
+        Dictionary(uniqueKeysWithValues: players.map { ($0.id, $0) })
+    }
+
+    private var selectedPlayerName: String {
+        guard let selectedPlayerID,
+              let player = playersByID[selectedPlayerID] else {
+            return "Tous les joueurs"
         }
+        return GamesListFormatting.displayName(for: player)
+    }
+
+    private var activeGames: [Game] {
+        games.filter {
+            ($0.statusOrDefault == .inProgress || $0.statusOrDefault == .paused)
+                && matchesCurrentFilters($0)
+        }
+    }
+
+    private var completedGames: [Game] {
+        games
+            .filter {
+                $0.statusOrDefault == .completed
+                    && matchesCurrentFilters($0)
+            }
+            .sorted {
+                GamesListFormatting.archiveDate(for: $0)
+                    > GamesListFormatting.archiveDate(for: $1)
+            }
+    }
+
+    private var recentCompletedGames: [Game] {
+        completedGames.filter {
+            GamesListFormatting.archiveDate(for: $0) >= recentCutoff
+        }
+    }
+
+    private var monthlyArchives: [GamesMonthArchive] {
+        let olderGames = completedGames.filter {
+            GamesListFormatting.archiveDate(for: $0) < recentCutoff
+        }
+        let grouped = Dictionary(grouping: olderGames) {
+            GamesListFormatting.monthStart(
+                for: GamesListFormatting.archiveDate(for: $0)
+            )
+        }
+
+        return grouped
+            .map { GamesMonthArchive(monthStart: $0.key, games: $0.value) }
+            .sorted { $0.monthStart > $1.monthStart }
+    }
+
+    private var recentCutoff: Date {
+        Calendar.current.date(
+            byAdding: .day,
+            value: -30,
+            to: Calendar.current.startOfDay(for: Date())
+        ) ?? Date.distantPast
     }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Segmented control
                 Picker("Filtre", selection: $filter) {
-                    ForEach(Filter.allCases) { f in
-                        Text(f.rawValue).tag(f)
+                    ForEach(Filter.allCases) { value in
+                        Text(value.rawValue).tag(value)
                     }
                 }
                 .pickerStyle(.segmented)
                 .padding([.horizontal, .top])
 
-                // Liste filtrée
-                if filteredGames.isEmpty {
-                    ContentUnavailableView(
-                        "Aucune partie",
-                        systemImage: "rectangle.on.rectangle.slash",
-                        description: Text("Change le filtre ou crée une nouvelle partie.")
-                    )
-                    .padding()
-                } else {
-                    List {
-                        ForEach(filteredGames) { game in
-                            NavigationLink(value: game.id) {
-                                row(for: game)
-                            }
-                        }
-                        .onDelete { indexSet in
-                            indexSet.map { filteredGames[$0] }.forEach(context.delete)
-                            try? context.save()
-                        }
-                    }
-                    .listStyle(.insetGrouped)
+                searchField
+                playerFilter
+
+                switch filter {
+                case .active:
+                    activeGamesContent
+                case .completed:
+                    historyContent
                 }
             }
             .navigationTitle(UIStrings.Common.games)
@@ -78,104 +118,343 @@ struct GamesListView: View {
                 if let game = games.first(where: { $0.id == id }) {
                     GameDetailView(game: game)
                 } else {
-                    Text("Partie introuvable").foregroundStyle(.secondary)
+                    Text("Partie introuvable")
+                        .foregroundStyle(.secondary)
                 }
             }
             .task {
 #if DEBUG && targetEnvironment(simulator)
                 DevSeed.seedIfNeeded(context)
-                //SampleData.ensureSamples(context)
-            #endif
+#endif
             }
         }
     }
 
-    // MARK: - Helpers (Players & Location)
-    private func participantNicknames(for game: Game) -> String {
-        let ids = game.participantIDs
-        guard !ids.isEmpty else { return "—" }
-        // Fetch only players whose id is in participantIDs
-        let descriptor = FetchDescriptor<Player>()
-        let players: [Player] = (try? context.fetch(descriptor)) ?? []
-        let map: [UUID: Player] = Dictionary(uniqueKeysWithValues: players.map { ($0.id, $0) })
-        let names: [String] = ids.compactMap { pid in
-            if let p = map[pid] {
-                let nick = p.nickname.trimmingCharacters(in: .whitespacesAndNewlines)
-                return nick.isEmpty ? p.name : nick
+    private var searchField: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+
+            TextField("Partie ou joueur", text: $searchText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Effacer la recherche")
             }
-            return nil
         }
-        return names.joined(separator: ", ")
+        .padding(.horizontal, 12)
+        .frame(height: 42)
+        .background(Color.secondary.opacity(0.10))
+        .clipShape(Capsule())
+        .padding(.horizontal)
+        .padding(.top, 10)
     }
 
-    /// Placeholder pour un futur champ `location` dans `Game`.
-    /// Retourne nil tant que le modèle ne stocke pas explicitement la géolocalisation.
-    private func gameLocation(for game: Game) -> String? {
-        return nil
+    private var playerFilter: some View {
+        Menu {
+            Button {
+                selectedPlayerID = nil
+            } label: {
+                if selectedPlayerID == nil {
+                    Label("Tous les joueurs", systemImage: "checkmark")
+                } else {
+                    Text("Tous les joueurs")
+                }
+            }
+
+            if !players.isEmpty {
+                Divider()
+            }
+
+            ForEach(players) { player in
+                Button {
+                    selectedPlayerID = player.id
+                } label: {
+                    if selectedPlayerID == player.id {
+                        Label(
+                            GamesListFormatting.displayName(for: player),
+                            systemImage: "checkmark"
+                        )
+                    } else {
+                        Text(GamesListFormatting.displayName(for: player))
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "person.crop.circle")
+                Text(selectedPlayerName)
+                    .lineLimit(1)
+                Spacer()
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption2)
+            }
+            .font(.subheadline)
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 12)
+            .frame(height: 38)
+            .background(Color.secondary.opacity(0.08))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .accessibilityLabel("Filtrer par joueur, sélection actuelle : \(selectedPlayerName)")
     }
 
-    // MARK: - Row
     @ViewBuilder
-    private func row(for game: Game) -> some View {
+    private var activeGamesContent: some View {
+        if activeGames.isEmpty {
+            emptyState(
+                title: hasActiveFilters ? "Aucun résultat" : "Aucune partie active",
+                description: hasActiveFilters
+                    ? "Modifie la recherche ou le joueur sélectionné."
+                    : "Crée une nouvelle partie pour commencer."
+            )
+        } else {
+            List {
+                Section {
+                    ForEach(activeGames) { game in
+                        gameLink(for: game)
+                    }
+                    .onDelete { offsets in
+                        delete(offsets, from: activeGames)
+                    }
+                } header: {
+                    listHeader(
+                        title: "Parties actives",
+                        count: activeGames.count
+                    )
+                }
+            }
+            .listStyle(.insetGrouped)
+        }
+    }
+
+    @ViewBuilder
+    private var historyContent: some View {
+        if completedGames.isEmpty {
+            emptyState(
+                title: hasActiveFilters ? "Aucun résultat" : "Aucune partie terminée",
+                description: hasActiveFilters
+                    ? "Modifie la recherche ou le joueur sélectionné."
+                    : "Les parties terminées apparaîtront ici."
+            )
+        } else {
+            List {
+                if !recentCompletedGames.isEmpty {
+                    Section {
+                        ForEach(recentCompletedGames) { game in
+                            gameLink(for: game)
+                        }
+                        .onDelete { offsets in
+                            delete(offsets, from: recentCompletedGames)
+                        }
+                    } header: {
+                        listHeader(
+                            title: "30 derniers jours",
+                            count: recentCompletedGames.count
+                        )
+                    }
+                }
+
+                if !monthlyArchives.isEmpty {
+                    Section("Archives") {
+                        ForEach(monthlyArchives) { archive in
+                            NavigationLink {
+                                GamesArchiveMonthView(
+                                    monthStart: archive.monthStart,
+                                    selectedPlayerID: selectedPlayerID,
+                                    initialSearchText: searchText
+                                )
+                            } label: {
+                                HStack {
+                                    Label(
+                                        GamesListFormatting.monthTitle(
+                                            for: archive.monthStart
+                                        ),
+                                        systemImage: "calendar"
+                                    )
+                                    Spacer()
+                                    Text(
+                                        "\(archive.games.count) "
+                                            + (archive.games.count > 1 ? "parties" : "partie")
+                                    )
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                }
+                                .padding(.vertical, 4)
+                            }
+                        }
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+        }
+    }
+
+    private var hasActiveFilters: Bool {
+        selectedPlayerID != nil
+            || !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func matchesCurrentFilters(_ game: Game) -> Bool {
+        if let selectedPlayerID,
+           !game.participantIDs.contains(selectedPlayerID) {
+            return false
+        }
+
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return true }
+
+        if game.name.localizedCaseInsensitiveContains(query) {
+            return true
+        }
+
+        return GamesListFormatting
+            .participantNames(for: game, playersByID: playersByID)
+            .contains { $0.localizedCaseInsensitiveContains(query) }
+    }
+
+    private func gameLink(for game: Game) -> some View {
+        NavigationLink(value: game.id) {
+            GameListRow(
+                game: game,
+                participantNames: GamesListFormatting.participantNames(
+                    for: game,
+                    playersByID: playersByID
+                )
+            )
+        }
+    }
+
+    private func delete(_ offsets: IndexSet, from displayedGames: [Game]) {
+        offsets
+            .compactMap { displayedGames.indices.contains($0) ? displayedGames[$0] : nil }
+            .forEach(context.delete)
+        try? context.save()
+    }
+
+    private func listHeader(title: String, count: Int) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text("\(count)")
+                .monospacedDigit()
+        }
+    }
+
+    private func emptyState(title: String, description: String) -> some View {
+        ContentUnavailableView(
+            title,
+            systemImage: "rectangle.on.rectangle.slash",
+            description: Text(description)
+        )
+        .padding()
+    }
+}
+
+struct GamesMonthArchive: Identifiable {
+    let monthStart: Date
+    let games: [Game]
+
+    var id: Date { monthStart }
+}
+
+enum GamesListFormatting {
+    static func displayName(for player: Player) -> String {
+        let nickname = player.nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !nickname.isEmpty { return nickname }
+
+        let name = player.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "Joueur" : name
+    }
+
+    static func participantNames(
+        for game: Game,
+        playersByID: [UUID: Player]
+    ) -> [String] {
+        game.participantIDs.compactMap { id in
+            playersByID[id].map(displayName(for:))
+        }
+    }
+
+    static func archiveDate(for game: Game) -> Date {
+        game.endedAt ?? game.createdAt
+    }
+
+    static func monthStart(for date: Date) -> Date {
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.year, .month], from: date)
+        return calendar.date(from: components) ?? calendar.startOfDay(for: date)
+    }
+
+    static func monthTitle(for date: Date) -> String {
+        date
+            .formatted(.dateTime.month(.wide).year().locale(Locale.current))
+            .capitalized
+    }
+}
+
+struct GameListRow: View {
+    let game: Game
+    let participantNames: [String]
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Titre = nom de la partie (ou fallback)
             Text(game.name.isEmpty ? UIStrings.Common.game : game.name)
                 .font(.headline)
 
-            // Date (toujours visible)
-            Text(game.createdAt.formatted(date: .abbreviated, time: .shortened))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            Text(
+                GamesListFormatting.archiveDate(for: game)
+                    .formatted(date: .abbreviated, time: .shortened)
+            )
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
 
-            // Participants (surnoms ou noms)
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Image(systemName: "person.2")
                     .imageScale(.small)
                     .foregroundStyle(.secondary)
-                Text(participantNicknames(for: game))
+                Text(participantNames.isEmpty ? "—" : participantNames.joined(separator: ", "))
                     .font(.subheadline)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
 
-            // Géolocalisation (si disponible un jour)
-            if let loc = gameLocation(for: game) {
-                HStack(spacing: 6) {
-                    Image(systemName: "mappin.and.ellipse")
-                        .imageScale(.small)
-                        .foregroundStyle(.secondary)
-                    Text(loc)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
+            HStack {
+                Spacer()
+                statusBadge
             }
-
-            // Badge de statut aligné à droite
-            HStack { Spacer(); statusBadge(for: game.statusOrDefault) }
-                .font(.caption)
         }
         .padding(.vertical, 6)
     }
 
-    // MARK: - Status badge
-    @ViewBuilder
-    private func statusBadge(for status: GameStatus) -> some View {
-        let (text, color): (String, Color) = {
-            switch status {
-            case .inProgress: return ("En cours", .blue)
-            case .paused:     return ("En pause", .orange)
-            case .completed:  return ("Terminée", .green)
+    private var statusBadge: some View {
+        let appearance: (text: String, color: Color) = {
+            switch game.statusOrDefault {
+            case .inProgress:
+                return ("En cours", .blue)
+            case .paused:
+                return ("En pause", .orange)
+            case .completed:
+                return ("Terminée", .green)
             }
         }()
 
-        Text(text)
+        return Text(appearance.text)
             .font(.caption)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(color.opacity(0.15))
+            .background(appearance.color.opacity(0.15))
             .clipShape(Capsule())
     }
 }
-

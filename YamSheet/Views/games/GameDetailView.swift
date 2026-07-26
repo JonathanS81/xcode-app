@@ -79,6 +79,7 @@ struct GameDetailView: View {
     @State private var showAlert = false
     @State private var showCongrats = false
     @State private var endGameEntries: [EndGameCongratsView.Entry] = []
+    @State private var turnStartFilledKeysByPlayer: [UUID: Set<String>] = [:]
 
     // MARK: - Columns (multi-colonnes plus tard)
     private var scoreColumnIndex: Int { 0 }
@@ -250,6 +251,68 @@ struct GameDetailView: View {
         if let pid = game.activePlayerID {
             let count = currentFillableCount(for: pid)
             game.beginTurnSnapshot(for: pid, fillableCount: count)
+            if turnStartFilledKeysByPlayer[pid] == nil,
+               let sc = game.scorecards.first(where: { $0.playerID == pid }) {
+                turnStartFilledKeysByPlayer[pid] = filledScoreKeys(for: sc)
+            }
+        }
+    }
+
+    private func filledScoreKeys(for sc: Scorecard) -> Set<String> {
+        let i = scoreColumnIndex
+        func filled(_ values: [Int]) -> Bool {
+            values.indices.contains(i) && values[i] >= 0
+        }
+
+        var keys: Set<String> = []
+        if filled(sc.ones) { keys.insert("ones") }
+        if filled(sc.twos) { keys.insert("twos") }
+        if filled(sc.threes) { keys.insert("threes") }
+        if filled(sc.fours) { keys.insert("fours") }
+        if filled(sc.fives) { keys.insert("fives") }
+        if filled(sc.sixes) { keys.insert("sixes") }
+        if filled(sc.maxVals) { keys.insert("max") }
+        if filled(sc.minVals) { keys.insert("min") }
+        if filled(sc.brelan) { keys.insert("brelan") }
+        if game.enableChance, filled(sc.chance) { keys.insert("chance") }
+        if filled(sc.full) { keys.insert("full") }
+        if filled(sc.suite) { keys.insert("suite") }
+        if game.enableSmallStraight, filled(sc.petiteSuite) { keys.insert("petiteSuite") }
+        if filled(sc.carre) { keys.insert("carre") }
+        if filled(sc.yams) { keys.insert("yams") }
+        return keys
+    }
+
+    private var currentTurnScoreKey: String? {
+        guard let pid = game.activePlayerID,
+              let sc = game.scorecards.first(where: { $0.playerID == pid }) else { return nil }
+        let start = turnStartFilledKeysByPlayer[pid] ?? filledScoreKeys(for: sc)
+        let added = filledScoreKeys(for: sc).subtracting(start)
+        return added.count == 1 ? added.first : nil
+    }
+
+    private func scoreValue(for key: String, in sc: Scorecard) -> Int {
+        let i = scoreColumnIndex
+        func value(_ values: [Int]) -> Int {
+            values.indices.contains(i) ? values[i] : -1
+        }
+        switch key {
+        case "ones": return value(sc.ones)
+        case "twos": return value(sc.twos)
+        case "threes": return value(sc.threes)
+        case "fours": return value(sc.fours)
+        case "fives": return value(sc.fives)
+        case "sixes": return value(sc.sixes)
+        case "max": return value(sc.maxVals)
+        case "min": return value(sc.minVals)
+        case "brelan": return value(sc.brelan)
+        case "chance": return value(sc.chance)
+        case "full": return value(sc.full)
+        case "suite": return value(sc.suite)
+        case "petiteSuite": return value(sc.petiteSuite)
+        case "carre": return value(sc.carre)
+        case "yams": return value(sc.yams)
+        default: return -1
         }
     }
 
@@ -307,7 +370,9 @@ struct GameDetailView: View {
             showAlert = true
             return
         }
-        lockExtraYamsForActiveIfNeeded()
+        if let sc = game.scorecards.first(where: { $0.playerID == pid }) {
+            turnStartFilledKeysByPlayer[pid] = filledScoreKeys(for: sc)
+        }
         game.endTurnCommit(for: pid, fillableCount: countNow)
         game.advanceToNextPlayer()
 
@@ -355,7 +420,9 @@ struct GameDetailView: View {
         let start = game.lastFilledCountByPlayer[pid] ?? now
         guard (now - start) == 1 else { return false }
 
-        lockExtraYamsForActiveIfNeeded()
+        if let sc = game.scorecards.first(where: { $0.playerID == pid }) {
+            turnStartFilledKeysByPlayer[pid] = filledScoreKeys(for: sc)
+        }
         game.endTurnCommit(for: pid, fillableCount: now)
         game.advanceToNextPlayer()
         ensureTurnSnapshotInitialized()
@@ -410,12 +477,11 @@ struct GameDetailView: View {
     }
 
     private func revokeExtraYams(for playerIdx: Int) {
-        var arr = game.scorecards[playerIdx].extraYamsAwarded
-        if scoreColumnIndex < arr.count && scoreColumnIndex >= 0 {
-            arr[scoreColumnIndex] = false
-            game.scorecards[playerIdx].extraYamsAwarded = arr
-            try? context.save()
-        }
+        game.scorecards[playerIdx].removeExtraYamsAward(
+            col: scoreColumnIndex,
+            source: currentTurnScoreKey
+        )
+        try? context.save()
     }
 
     private func setActivePlayer(_ pid: UUID) {
@@ -431,24 +497,13 @@ struct GameDetailView: View {
             showAlert = true
             return
         }
+        if let sc = game.scorecards.first(where: { $0.playerID == current }) {
+            turnStartFilledKeysByPlayer[current] = filledScoreKeys(for: sc)
+        }
         game.jumpTo(playerID: pid)
         ensureTurnSnapshotInitialized()
     }
     
-    // Verrouille la prime Yams du joueur actif au moment où le tour est validé
-    private func lockExtraYamsForActiveIfNeeded() {
-        guard let idx = activeScorecardIndex else { return }
-        let sc = game.scorecards[idx]
-        let alreadyAwarded = sc.extraYamsAwarded.indices.contains(scoreColumnIndex)
-                           && sc.extraYamsAwarded[scoreColumnIndex]
-        let alreadyLocked  = sc.isLocked(col: scoreColumnIndex, key: "ExtraYamsBonus")
-        if alreadyAwarded && !alreadyLocked {
-            game.scorecards[idx].setLocked(true, col: scoreColumnIndex, key: "ExtraYamsBonus")
-        }
-    }
-    
-    
-
     // MARK: - Header moderne
     private var activeIndexForChips: Int? {
         guard let aid = game.activePlayerID else { return nil }
@@ -465,7 +520,7 @@ struct GameDetailView: View {
 
     @ViewBuilder
     private func modernHeader() -> some View {
-        GDV_Header(title: game.name, subtitle: statusSubtitle)
+        GDV_Header(title: UIStrings.Game.title, subtitle: statusSubtitle)
        /* GDV_PlayerChips(
             players: orderedPlayers.map { $0.nickname },
             activeIndex: activeIndexForChips
@@ -479,6 +534,7 @@ struct GameDetailView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12) {
                 modernHeader()
+                turnYamsDeclarationControl()
                 grid()
             }
             .padding(.horizontal)
@@ -528,7 +584,7 @@ struct GameDetailView: View {
         .onDisappear { autoPauseIfNeeded(reason: "onDisappear") }
         .scrollDismissesKeyboard(.interactively)
         .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
-        .navigationTitle(UIStrings.Game.title)
+        .navigationTitle(game.name.isEmpty ? UIStrings.Common.game : game.name)
         .toolbar {
 /*#if DEBUG
             ToolbarItem(placement: .navigationBarLeading) {
@@ -919,7 +975,7 @@ struct GameDetailView: View {
                 if let playerIdx = scorecardIndexByPlayerID[pid] {
                     let scBinding = $game.scorecards[playerIdx]
                     let isLocked  = scBinding.wrappedValue.isLocked(col: scoreColumnIndex, key: label)
-                    let binding   = valueBinding(scBinding, keyPath, scoreColumnIndex)
+                    let binding   = valueBinding(scBinding, keyPath, scoreColumnIndex, label: label)
                     let isFilled = (binding.wrappedValue >= 0) // -1 = vide
                     // En mode sombre, pour la colonne du joueur actif, on garde la teinte claire
                     // même si la case est "remplie", afin que le caret et le texte restent lisibles.
@@ -1006,7 +1062,7 @@ struct GameDetailView: View {
                 if let playerIdx = scorecardIndexByPlayerID[pid] {
                     let scBinding = $game.scorecards[playerIdx]
                     let isLocked  = scBinding.wrappedValue.isLocked(col: scoreColumnIndex, key: label)
-                    let binding   = valueBinding(scBinding, keyPath, scoreColumnIndex)
+                    let binding   = valueBinding(scBinding, keyPath, scoreColumnIndex, label: label)
 
                     Menu {
                         Picker("Valeur", selection: binding) {
@@ -1129,11 +1185,81 @@ struct GameDetailView: View {
     }
 
     // MARK: - Extra Yams
-    private var extraYamsIsEnabled: Bool { game.enableExtraYamsBonus }
+    private var extraYamsIsEnabled: Bool {
+        game.extraYamsBonusMode != .disabled
+            && game.notation.extraYamsBonusValue > 0
+    }
 
-    private func yamsAlreadyScored(_ sc: Scorecard, col: Int) -> Bool {
-        guard sc.yams.indices.contains(col) else { return false }
-        return sc.yams[col] > 0
+    private func storageKey(for label: String) -> String {
+        switch label {
+        case UIStrings.Game.ones: return "ones"
+        case UIStrings.Game.twos: return "twos"
+        case UIStrings.Game.threes: return "threes"
+        case UIStrings.Game.fours: return "fours"
+        case UIStrings.Game.fives: return "fives"
+        case UIStrings.Game.sixes: return "sixes"
+        case UIStrings.Game.max: return "max"
+        case UIStrings.Game.min: return "min"
+        case UIStrings.Game.brelan: return "brelan"
+        case UIStrings.Game.chance: return "chance"
+        case UIStrings.Game.full: return "full"
+        case UIStrings.Game.suite: return "suite"
+        case UIStrings.Game.petiteSuite: return "petiteSuite"
+        case UIStrings.Game.carre: return "carre"
+        case UIStrings.Game.yams: return "yams"
+        default: return label
+        }
+    }
+
+    @ViewBuilder
+    private func turnYamsDeclarationControl() -> some View {
+        if canShowNextButton,
+           let pid = game.activePlayerID,
+           let playerIdx = scorecardIndexByPlayerID[pid],
+           let key = currentTurnScoreKey,
+           key != "yams",
+           scoreValue(for: key, in: game.scorecards[playerIdx]) > 0 {
+            let scBinding = $game.scorecards[playerIdx]
+            let isDeclared = scBinding.wrappedValue.isDeclaredYams(
+                col: scoreColumnIndex,
+                key: key
+            )
+
+            Button {
+                let newValue = !isDeclared
+                scBinding.wrappedValue.setDeclaredYams(
+                    newValue,
+                    col: scoreColumnIndex,
+                    key: key
+                )
+
+                try? context.save()
+            } label: {
+                Label(
+                    isDeclared ? "Ce lancer est déclaré comme Yams" : "Ce lancer est un Yams",
+                    systemImage: isDeclared ? "checkmark.circle.fill" : "dice"
+                )
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(maxWidth: .infinity)
+                .frame(height: 38)
+                .foregroundStyle(Color.accentColor.opacity(isDeclared ? 1 : 0.85))
+                .background(
+                    Capsule()
+                        .fill(Color.accentColor.opacity(isDeclared ? 0.24 : 0.07))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(
+                            Color.accentColor.opacity(isDeclared ? 0.55 : 0.14),
+                            lineWidth: isDeclared ? 1.5 : 1
+                        )
+                )
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Indique que les cinq dés avaient la même valeur")
+        }
     }
 
     @ViewBuilder
@@ -1142,25 +1268,65 @@ struct GameDetailView: View {
             ForEach(displayPlayerIDs, id: \.self) { pid in
                 if let playerIdx = scorecardIndexByPlayerID[pid] {
                     let scBinding = $game.scorecards[playerIdx]
-                    let awarded: Bool = {
-                        let arr = scBinding.wrappedValue.extraYamsAwarded
-                        return (scoreColumnIndex >= 0 && scoreColumnIndex < arr.count) ? arr[scoreColumnIndex] : false
-                    }()
-                    let eligible = yamsAlreadyScored(scBinding.wrappedValue, col: scoreColumnIndex)
-                    let isLockedExtra = scBinding.wrappedValue.isLocked(col: scoreColumnIndex, key: "ExtraYamsBonus")
+                    let awardCount = scBinding.wrappedValue.extraYamsAwardsCount(col: scoreColumnIndex)
                     let isActivePlayer = (game.activePlayerID == pid)
+                    let source = isActivePlayer ? currentTurnScoreKey : nil
+                    let isCurrentThrowYams: Bool = {
+                        guard let source else { return false }
+                        if source == "yams" {
+                            return scoreValue(for: source, in: scBinding.wrappedValue) > 0
+                        }
+                        return scBinding.wrappedValue.isDeclaredYams(
+                            col: scoreColumnIndex,
+                            key: source
+                        )
+                    }()
+                    let currentThrowAlreadyAwarded = source.map {
+                        scBinding.wrappedValue.hasExtraYamsAward(
+                            col: scoreColumnIndex,
+                            source: $0
+                        )
+                    } ?? false
+                    let hasReachedSecondYams = StatsService.yamsCount(
+                        for: scBinding.wrappedValue,
+                        col: scoreColumnIndex
+                    ) >= 2
+                    let modeAllowsAnother = game.extraYamsBonusMode == .multiple
+                        || awardCount == 0
+                    let canGrant = isActivePlayer
+                        && isCurrentThrowYams
+                        && hasReachedSecondYams
+                        && modeAllowsAnother
+                        && !currentThrowAlreadyAwarded
 
                     ZStack(alignment: .topTrailing) {
-                        // Base cell background + content
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(columnTint(pid: pid, isFilled: awarded))
+                            .fill(columnTint(pid: pid, isFilled: awardCount > 0))
 
-                        if awarded {
-                            // Compact awarded presentation
+                        if canGrant, let source {
+                            Button {
+                                scBinding.wrappedValue.addExtraYamsAward(
+                                    col: scoreColumnIndex,
+                                    source: source
+                                )
+                                try? context.save()
+                            } label: {
+                                Text("+")
+                                    .font(.system(
+                                        size: max(14, min(22, minCellWidth * 0.6)),
+                                        weight: .semibold
+                                    ))
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .padding(.horizontal, cellPadding)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Attribuer une prime Yams supplémentaire")
+                        } else if awardCount > 0 {
                             HStack(spacing: 6) {
                                 Image(systemName: "checkmark.seal.fill")
                                     .imageScale(.medium)
-                                Text("\(game.notation.extraYamsBonusValue)")
+                                Text("\(awardCount)×\(game.notation.extraYamsBonusValue)")
                                     .font(badgeFont)
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.75)
@@ -1168,8 +1334,7 @@ struct GameDetailView: View {
                             }
                             .padding(.horizontal, cellPadding)
 
-                            if isActivePlayer && !isLockedExtra {
-                                // Revoke button as a small overlay in the corner
+                            if isActivePlayer && currentThrowAlreadyAwarded {
                                 Button(role: .destructive) {
                                     revokePlayerIdx = playerIdx
                                     showRevokeYams = true
@@ -1180,27 +1345,7 @@ struct GameDetailView: View {
                                 .buttonStyle(.borderless)
                                 .padding(6)
                             }
-                        } else if eligible && isActivePlayer {
-                            // Compact "grant" button
-                            Button {
-                                var arr = scBinding.wrappedValue.extraYamsAwarded
-                                if scoreColumnIndex >= arr.count {
-                                    arr.append(contentsOf: Array(repeating: false, count: scoreColumnIndex - arr.count + 1))
-                                }
-                                arr[scoreColumnIndex] = true
-                                scBinding.wrappedValue.extraYamsAwarded = arr
-                                //scBinding.wrappedValue.setLocked(true, col: scoreColumnIndex, key: "ExtraYamsBonus")
-                                try? context.save()
-                            } label: {
-                                Text("+")
-                                    .font(.system(size: max(14, min(22, minCellWidth * 0.6)), weight: .semibold))
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                    .padding(.horizontal, cellPadding)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
                         } else {
-                            // Not eligible or not active → dash, centered
                             Text(UIStrings.Common.dash)
                                 .font(cellFont)
                                 .lineLimit(1)
@@ -1211,13 +1356,15 @@ struct GameDetailView: View {
                     .frame(minWidth: minCellWidth, maxWidth: .infinity)
                     .frame(height: cellRowHeight)
                     .contextMenu {
-                        if awarded && !isLockedExtra {
+                        if currentThrowAlreadyAwarded {
                             Button("Retirer la prime", role: .destructive) {
                                 revokeExtraYams(for: playerIdx)
                             }
                         } else {
                             Button("Conditions") {
-                                tipText = "Prime accordée uniquement si le Yams est déjà validé (≠ 0 et ≠ —)."
+                                tipText = game.extraYamsBonusMode == .multiple
+                                    ? "Chaque Yams après le premier peut recevoir une prime."
+                                    : "Une seule prime peut être attribuée après le premier Yams."
                                 showTip = true
                             }
                         }
@@ -1243,7 +1390,10 @@ struct GameDetailView: View {
     // MARK: - Helpers communs
     private func allowed(for face: Int) -> [Int] { Validators.allowedUpperValues(face: face) }
 
-    private func valueBinding(_ sc: Binding<Scorecard>, _ keyPath: WritableKeyPath<Scorecard, [Int]>, _ col: Int) -> Binding<Int> {
+    private func valueBinding(_ sc: Binding<Scorecard>,
+                              _ keyPath: WritableKeyPath<Scorecard, [Int]>,
+                              _ col: Int,
+                              label: String) -> Binding<Int> {
         Binding<Int>(
             get: {
                 let arr = sc.wrappedValue[keyPath: keyPath]
@@ -1254,6 +1404,13 @@ struct GameDetailView: View {
                 if col < arr.count && col >= 0 {
                     arr[col] = newVal
                     sc.wrappedValue[keyPath: keyPath] = arr
+                    if newVal <= 0 {
+                        let key = storageKey(for: label)
+                        sc.wrappedValue.setDeclaredYams(false, col: col, key: key)
+                        if sc.wrappedValue.extraYamsSource(col: col) == key {
+                            sc.wrappedValue.setExtraYamsSource(nil, col: col)
+                        }
+                    }
                 }
             }
         )
