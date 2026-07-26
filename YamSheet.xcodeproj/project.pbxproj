@@ -40,6 +40,11 @@
 			path = YamSheet;
 			sourceTree = "<group>";
 		};
+		A1B2C3D4E5F60718293A4B5C /* YamSheetTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = YamSheetTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -73,6 +78,7 @@
 			isa = PBXGroup;
 			children = (
 				75426E5B2E5F132800A3A016 /* YamSheet */,
+				A1B2C3D4E5F60718293A4B5C /* YamSheetTests */,
 				75426E5A2E5F132800A3A016 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -126,6 +132,9 @@
 			);
 			dependencies = (
 				75426E6D2E5F132B00A3A016 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A1B2C3D4E5F60718293A4B5C /* YamSheetTests */,
 			);
 			name = YamSheetTests;
 			packageProductDependencies = (

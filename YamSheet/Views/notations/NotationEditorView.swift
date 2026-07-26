@@ -13,12 +13,7 @@ struct NotationEditorView: View {
     
     var onCreated: ((Notation) -> Void)? = nil
 
-    @State private var local = Notation(
-        name: "Classique",
-        tooltipUpper: "Atteignez le seuil pour gagner le bonus.",
-        tooltipMiddle: nil, // non édité : affiché via StatsEngine.middleTooltip
-        tooltipBottom: "Chaque figure peut être calculée différemment."
-    )
+    @State private var local = Notation(name: "Classique")
 
     var body: some View {
         NavigationStack {
@@ -26,18 +21,6 @@ struct NotationEditorView: View {
                 // Nom
                 Section(UIStrings.Notation.name) {
                     TextField(UIStrings.Notation.name, text: $local.name)
-                }
-
-                // Tooltips : Upper & Bottom éditables ; Middle est affiché en lecture seule plus bas
-                Section(UIStrings.Notation.tooltips) {
-                    TextField(UIStrings.Notation.tooltipUpper, text: Binding(
-                        get: { local.tooltipUpper ?? "" },
-                        set: { local.tooltipUpper = $0 }
-                    ))
-                    TextField(UIStrings.Notation.tooltipBottom, text: Binding(
-                        get: { local.tooltipBottom ?? "" },
-                        set: { local.tooltipBottom = $0 }
-                    ))
                 }
 
                 // Section haute
@@ -74,93 +57,53 @@ struct NotationEditorView: View {
                     }
                 }
 
-                // Section basse — Grande suite (5 dés)
-                Section(UIStrings.Notation.bigSuite) {
-                    Picker(UIStrings.Notation.modeLabel, selection: $local.suiteBigModeRaw) {
-                        Text(UIStrings.Notation.suiteModeLabel(.singleFixed)).tag(SuiteBigMode.singleFixed.rawValue)
-                        Text(UIStrings.Notation.suiteModeLabel(.splitFixed)).tag(SuiteBigMode.splitFixed.rawValue)
-                    }
-
-
-                    if local.suiteBigMode == .singleFixed {
-                        HStack {
-                            Text(UIStrings.Notation.valueFixed).font(.caption).foregroundStyle(.secondary)
-                            Spacer()
-                            CompactWheelPicker(value: $local.suiteBigFixed,
-                                               range: 0...100,
-                                               title: UIStrings.Notation.valueFixed)
-                        }
-                    } else {
-                        HStack {
-                            Text(UIStrings.Notation.suite15Lbl).font(.caption).foregroundStyle(.secondary)
-                            Spacer()
-                            CompactWheelPicker(value: $local.suiteBigFixed1to5,
-                                               range: 0...100,
-                                               title: UIStrings.Notation.suite15Lbl)
-                        }
-                        HStack {
-                            Text(UIStrings.Notation.suite20Lbl).font(.caption).foregroundStyle(.secondary)
-                            Spacer()
-                            CompactWheelPicker(value: $local.suiteBigFixed2to6,
-                                               range: 0...100,
-                                               title: UIStrings.Notation.suite20Lbl)
-                        }
-                    }
-                }
-
-                // Section basse — Règles des figures
-                Section(UIStrings.Notation.bottomRules) {
-                    FigureRuleRow(title: "Brelan",       rule: $local.ruleBrelan)
-                    FigureRuleRow(title: "Chance",       rule: $local.ruleChance)
-                    FigureRuleRow(title: "Full",         rule: $local.ruleFull)
-                    Toggle(
-                        "Activer la petite suite",
-                        isOn: Binding(
+                Section("Suites") {
+                    BigSuiteRuleBlock(
+                        modeRaw: $local.suiteBigModeRaw,
+                        singleValue: $local.suiteBigFixed,
+                        value1to5: $local.suiteBigFixed1to5,
+                        value2to6: $local.suiteBigFixed2to6
+                    )
+                    OptionalFigureRuleBlock(
+                        toggleTitle: "Activer la petite suite",
+                        scoreTitle: "Score petite suite",
+                        isEnabled: Binding(
                             get: { local.isSmallStraightEnabled },
                             set: { local.isSmallStraightEnabled = $0 }
-                        )
+                        ),
+                        rule: $local.rulePetiteSuite
                     )
-                    if local.isSmallStraightEnabled {
-                        FigureRuleRow(
-                            title: "Score petite suite",
-                            rule: $local.rulePetiteSuite
-                        )
-                    }
-                    FigureRuleRow(title: "Carré",        rule: $local.ruleCarre)
-                    FigureRuleRow(title: "Yams",         rule: $local.ruleYams)
-
-                    Section("Prime Yams supplémentaire") {
-                        Picker("Mode", selection: Binding(
-                            get: { local.extraYamsBonusMode },
-                            set: { local.extraYamsBonusMode = $0 }
-                        )) {
-                            ForEach(ExtraYamsBonusMode.allCases) { mode in
-                                Text(mode.label).tag(mode)
-                            }
-                        }
-
-                        if local.extraYamsBonusMode != .disabled {
-                            HStack {
-                                Text("Montant par prime")
-                                Spacer()
-                                TextField("0", value: $local.extraYamsBonusValue, format: .number)
-                                    .keyboardType(.numberPad)
-                                    .frame(width: 80)
-                                    .multilineTextAlignment(.trailing)
-                            }
-                        }
-
-                        Text("Le premier Yams n’accorde pas de prime. En mode multiple, chaque Yams suivant peut recevoir la prime.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
                 }
 
-                // Tooltip bas (affichage)
-                if let tip = local.tooltipBottom, !tip.isEmpty {
-                    Section {
-                        Text(tip).font(.footnote).foregroundStyle(.secondary)
-                    }
+                Section("Figures") {
+                    FigureRuleRow(title: "Brelan", rule: $local.ruleBrelan)
+                    OptionalFigureRuleBlock(
+                        toggleTitle: "Activer la Chance",
+                        scoreTitle: "Score Chance",
+                        isEnabled: Binding(
+                            get: { local.isChanceEnabled },
+                            set: { local.isChanceEnabled = $0 }
+                        ),
+                        rule: $local.ruleChance
+                    )
+                    FigureRuleRow(title: "Full", rule: $local.ruleFull)
+                    FigureRuleRow(title: "Carré", rule: $local.ruleCarre)
+                    FigureRuleRow(title: "Yams", rule: $local.ruleYams)
+                    ExtraYamsBonusBlock(
+                        mode: Binding(
+                            get: { local.extraYamsBonusMode },
+                            set: { local.extraYamsBonusMode = $0 }
+                        ),
+                        value: $local.extraYamsBonusValue
+                    )
+                }
+
+                Section {
+                    NotationHelpEditor(notation: local)
+                } header: {
+                    Text("Aides de la feuille de score")
+                } footer: {
+                    Text("Seules les aides renseignées pourront être affichées pendant une partie.")
                 }
             }
 

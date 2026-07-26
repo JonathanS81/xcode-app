@@ -17,6 +17,7 @@ fileprivate enum ColumnRecenterMode: Int {
 struct GameDetailView: View {
     // Accès aux joueurs pour récupérer leur couleur
     @Query private var allPlayers: [Player]
+    @Query private var appSettings: [AppSettings]
 
     // Couleur pour un playerID
     private func colorForPlayerID(_ id: UUID?) -> Color {
@@ -70,6 +71,7 @@ struct GameDetailView: View {
 
     // MARK: - UI State
     @State private var showTip = false
+    @State private var tipTitle = UIStrings.Game.tooltipTitle
     @State private var tipText = ""
     @State private var showRevokeYams = false
     @State private var revokePlayerIdx: Int? = nil
@@ -622,6 +624,11 @@ struct GameDetailView: View {
             }
         }
         .alert(alertMessage, isPresented: $showAlert) { Button(UIStrings.Common.ok, role: .cancel) { } }
+        .alert(tipTitle, isPresented: $showTip) {
+            Button(UIStrings.Common.ok, role: .cancel) { }
+        } message: {
+            Text(tipText)
+        }
         .confirmationDialog(
             "Annuler la prime Yams supplémentaire ?",
             isPresented: $showRevokeYams,
@@ -693,7 +700,7 @@ struct GameDetailView: View {
                 }
 
                 // Section haute
-                HStack { Text(UIStrings.Game.upperSection).font(.headline).frame(width: labelColumnWidth, alignment: .leading); Spacer() }
+                HStack { scoreHelpLabel(UIStrings.Game.upperSection, font: .headline); Spacer() }
                 rowUpper(label: UIStrings.Game.ones,   face: 1, keyPath: \Scorecard.ones)
                 rowUpper(label: UIStrings.Game.twos,   face: 2, keyPath: \Scorecard.twos)
                 rowUpper(label: UIStrings.Game.threes, face: 3, keyPath: \Scorecard.threes)
@@ -703,13 +710,13 @@ struct GameDetailView: View {
                 totalsRow(label: UIStrings.Game.total1, valueForPlayer: total1Text)
 
                 // Section milieu
-                HStack { Text(UIStrings.Game.middleSection).font(.headline).frame(width: labelColumnWidth, alignment: .leading); Spacer() }
+                HStack { scoreHelpLabel(UIStrings.Game.middleSection, font: .headline); Spacer() }
                 rowMaxMin(label: UIStrings.Game.max, keyPath: \Scorecard.maxVals)
                 rowMaxMin(label: UIStrings.Game.min, keyPath: \Scorecard.minVals)
                 totalsRow(label: UIStrings.Game.total2, valueForPlayer: total2Text)
 
                 // Section basse
-                HStack { Text(UIStrings.Game.bottomSection).font(.headline).frame(width: labelColumnWidth, alignment: .leading); Spacer() }
+                HStack { scoreHelpLabel(UIStrings.Game.bottomSection, font: .headline); Spacer() }
                 rowBottom(label: UIStrings.Game.brelan, keyPath: \Scorecard.brelan,
                           validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleBrelan) },
                           displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleBrelan) })
@@ -723,7 +730,7 @@ struct GameDetailView: View {
                           displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleFull) })
 
                 HStack(spacing: 0) {
-                    Text(UIStrings.Game.suite).frame(width: labelColumnWidth, alignment: .leading)
+                    scoreHelpLabel(UIStrings.Game.suite)
                     pickerRowPlayersOnly(allowedValues: suiteAllowedValuesFromSnapshot(),
                                          label: UIStrings.Game.suite,
                                          valueToText: GDV_Helpers.displaySuiteValue,
@@ -732,7 +739,7 @@ struct GameDetailView: View {
 
                 if game.enableSmallStraight {
                     HStack(spacing: 0) {
-                        Text(UIStrings.Game.petiteSuite).frame(width: labelColumnWidth, alignment: .leading)
+                        scoreHelpLabel(UIStrings.Game.petiteSuite)
                         pickerRowPlayersOnly(allowedValues: petiteSuiteAllowedValuesFromSnapshot(),
                                              label: UIStrings.Game.petiteSuite,
                                              valueToText: GDV_Helpers.displayPetiteSuiteValue,
@@ -756,7 +763,7 @@ struct GameDetailView: View {
 
                 if extraYamsIsEnabled {
                     HStack(spacing: 0) {
-                        Text("Prime Yams supplémentaire").frame(width: labelColumnWidth, alignment: .leading)
+                        scoreHelpLabel("Prime Yams supplémentaire")
                         extraYamsRowPlayersOnly()
                     }
                 }
@@ -770,27 +777,91 @@ struct GameDetailView: View {
     }
 
     // MARK: - Sous-vues (labels figés & colonnes joueurs)
+    private var scoreHelpIsEnabled: Bool {
+        appSettings.first?.showsScoreHelp ?? true
+    }
+
+    private func scoreHelpKey(for label: String) -> ScoreHelpKey? {
+        switch label {
+        case UIStrings.Game.upperSection: return .sectionUpper
+        case UIStrings.Game.ones: return .ones
+        case UIStrings.Game.twos: return .twos
+        case UIStrings.Game.threes: return .threes
+        case UIStrings.Game.fours: return .fours
+        case UIStrings.Game.fives: return .fives
+        case UIStrings.Game.sixes: return .sixes
+        case UIStrings.Game.middleSection: return .sectionMiddle
+        case UIStrings.Game.max: return .max
+        case UIStrings.Game.min: return .min
+        case UIStrings.Game.bottomSection: return .sectionBottom
+        case UIStrings.Game.brelan: return .brelan
+        case UIStrings.Game.chance: return .chance
+        case UIStrings.Game.full: return .full
+        case UIStrings.Game.suite: return .suite
+        case UIStrings.Game.petiteSuite: return .petiteSuite
+        case UIStrings.Game.carre: return .carre
+        case UIStrings.Game.yams: return .yams
+        case "Prime Yams supplémentaire": return .extraYams
+        default: return nil
+        }
+    }
+
+    @ViewBuilder
+    private func scoreHelpLabel(
+        _ text: String,
+        font: Font = .body,
+        width: CGFloat? = nil
+    ) -> some View {
+        let helpText = scoreHelpKey(for: text).flatMap {
+            game.notation.helpText(for: $0)
+        }
+
+        HStack(spacing: 5) {
+            Text(text)
+                .lineLimit(2)
+                .minimumScaleFactor(0.75)
+
+            if scoreHelpIsEnabled, let helpText {
+                Button {
+                    tipTitle = text
+                    tipText = helpText
+                    showTip = true
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Aide pour \(text)")
+            }
+
+            Spacer(minLength: 0)
+        }
+        .font(font)
+        .frame(
+            width: width ?? labelColumnWidth,
+            alignment: .leading
+        )
+    }
+
     // Draw a section header label that may visually overflow to the right when there are ≥5 players
     @ViewBuilder
     private func overflowHeaderLabel(_ text: String) -> some View {
         let needsHorizontal = displayPlayerIDs.count >= 5
         let headerOverflow: CGFloat = 72 // visual extra space to show full title (no layout impact)
-        // Base width remains labelColumnWidth to preserve column alignment
-        Text(text)
-            .font(.headline)
-            .lineLimit(1)
-            .frame(width: labelColumnWidth, alignment: .leading)
-            .overlay(
-                Group {
-                    if needsHorizontal {
-                        Text(text)
-                            .font(.headline)
-                            .lineLimit(1)
-                            .frame(width: labelColumnWidth + headerOverflow, alignment: .leading)
-                            .allowsHitTesting(false) // don’t steal horizontal scroll gestures
-                    }
-                }, alignment: .leading
-            )
+        if needsHorizontal {
+            Color.clear
+                .frame(width: labelColumnWidth)
+                .overlay(alignment: .leading) {
+                    scoreHelpLabel(
+                        text,
+                        font: .headline,
+                        width: labelColumnWidth + headerOverflow
+                    )
+                }
+        } else {
+            scoreHelpLabel(text, font: .headline)
+        }
     }
 
     private func labelsColumn() -> some View {
@@ -800,32 +871,32 @@ struct GameDetailView: View {
             // Section haute
             overflowHeaderLabel(UIStrings.Game.upperSection)
                 .frame(height: headerRowHeight)
-            Text(UIStrings.Game.ones).frame(height: cellRowHeight, alignment: .leading)
-            Text(UIStrings.Game.twos).frame(height: cellRowHeight, alignment: .leading)
-            Text(UIStrings.Game.threes).frame(height: cellRowHeight, alignment: .leading)
-            Text(UIStrings.Game.fours).frame(height: cellRowHeight, alignment: .leading)
-            Text(UIStrings.Game.fives).frame(height: cellRowHeight, alignment: .leading)
-            Text(UIStrings.Game.sixes).frame(height: cellRowHeight, alignment: .leading)
+            scoreHelpLabel(UIStrings.Game.ones).frame(height: cellRowHeight)
+            scoreHelpLabel(UIStrings.Game.twos).frame(height: cellRowHeight)
+            scoreHelpLabel(UIStrings.Game.threes).frame(height: cellRowHeight)
+            scoreHelpLabel(UIStrings.Game.fours).frame(height: cellRowHeight)
+            scoreHelpLabel(UIStrings.Game.fives).frame(height: cellRowHeight)
+            scoreHelpLabel(UIStrings.Game.sixes).frame(height: cellRowHeight)
             Text(UIStrings.Game.total1).font(.headline).frame(height: cellRowHeight, alignment: .leading)
 
             // Section milieu
             overflowHeaderLabel(UIStrings.Game.middleSection)
                 .frame(height: headerRowHeight)
-            Text(UIStrings.Game.max).frame(height: cellRowHeight, alignment: .leading)
-            Text(UIStrings.Game.min).frame(height: cellRowHeight, alignment: .leading)
+            scoreHelpLabel(UIStrings.Game.max).frame(height: cellRowHeight)
+            scoreHelpLabel(UIStrings.Game.min).frame(height: cellRowHeight)
             Text(UIStrings.Game.total2).font(.headline).frame(height: cellRowHeight, alignment: .leading)
 
             // Section basse
             overflowHeaderLabel(UIStrings.Game.bottomSection)
                 .frame(height: headerRowHeight)
-            Text(UIStrings.Game.brelan).frame(height: cellRowHeight, alignment: .leading)
-            if game.enableChance { Text(UIStrings.Game.chance).frame(height: cellRowHeight, alignment: .leading) }
-            Text(UIStrings.Game.full).frame(height: cellRowHeight, alignment: .leading)
-            Text(UIStrings.Game.suite).frame(height: cellRowHeight, alignment: .leading)
-            if game.enableSmallStraight { Text(UIStrings.Game.petiteSuite).frame(height: cellRowHeight, alignment: .leading) }
-            Text(UIStrings.Game.carre).frame(height: cellRowHeight, alignment: .leading)
-            Text(UIStrings.Game.yams).frame(height: cellRowHeight, alignment: .leading)
-            if extraYamsIsEnabled { Text("Prime Yams supplémentaire").frame(height: cellRowHeight, alignment: .leading) }
+            scoreHelpLabel(UIStrings.Game.brelan).frame(height: cellRowHeight)
+            if game.enableChance { scoreHelpLabel(UIStrings.Game.chance).frame(height: cellRowHeight) }
+            scoreHelpLabel(UIStrings.Game.full).frame(height: cellRowHeight)
+            scoreHelpLabel(UIStrings.Game.suite).frame(height: cellRowHeight)
+            if game.enableSmallStraight { scoreHelpLabel(UIStrings.Game.petiteSuite).frame(height: cellRowHeight) }
+            scoreHelpLabel(UIStrings.Game.carre).frame(height: cellRowHeight)
+            scoreHelpLabel(UIStrings.Game.yams).frame(height: cellRowHeight)
+            if extraYamsIsEnabled { scoreHelpLabel("Prime Yams supplémentaire").frame(height: cellRowHeight) }
             Text(UIStrings.Game.total3).font(.headline).frame(height: cellRowHeight, alignment: .leading)
 
             // Total général
@@ -943,14 +1014,14 @@ struct GameDetailView: View {
     // MARK: - Lignes compactes (≤4 joueurs)
     private func rowUpper(label: String, face: Int, keyPath: WritableKeyPath<Scorecard, [Int]>) -> some View {
         HStack(spacing: 0) {
-            Text(label).frame(width: labelColumnWidth, alignment: .leading)
+            scoreHelpLabel(label)
             pickerRowPlayersOnly(allowedValues: allowed(for: face), label: label, keyPath: keyPath)
         }
     }
 
     private func rowMaxMin(label: String, keyPath: WritableKeyPath<Scorecard, [Int]>) -> some View {
         HStack(spacing: 0) {
-            Text(label).frame(width: labelColumnWidth, alignment: .leading)
+            scoreHelpLabel(label)
             numericRowPlayersOnly(keyPath: keyPath, label: label)
         }
     }
@@ -960,7 +1031,7 @@ struct GameDetailView: View {
                            validator: ((Int?) -> Int)? = nil,
                            displayMap: ((Int) -> String)? = nil) -> some View {
         HStack(spacing: 0) {
-            Text(label).frame(width: labelColumnWidth, alignment: .leading)
+            scoreHelpLabel(label)
             numericRowPlayersOnly(keyPath: keyPath, label: label, validator: validator, displayMap: displayMap)
         }
     }
@@ -1333,6 +1404,11 @@ struct GameDetailView: View {
                                 Spacer(minLength: 0)
                             }
                             .padding(.horizontal, cellPadding)
+                            .frame(
+                                maxWidth: .infinity,
+                                maxHeight: .infinity,
+                                alignment: .leading
+                            )
 
                             if isActivePlayer && currentThrowAlreadyAwarded {
                                 Button(role: .destructive) {
@@ -1362,6 +1438,7 @@ struct GameDetailView: View {
                             }
                         } else {
                             Button("Conditions") {
+                                tipTitle = "Prime Yams supplémentaire"
                                 tipText = game.extraYamsBonusMode == .multiple
                                     ? "Chaque Yams après le premier peut recevoir une prime."
                                     : "Une seule prime peut être attribuée après le premier Yams."

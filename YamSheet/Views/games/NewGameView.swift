@@ -23,7 +23,6 @@ struct NewGameView: View {
     @State private var selectedNotationID: Notation.ID? = nil
 
     // Options
-    @State private var enableChance: Bool = true
     @State private var comment: String = ""
     @State private var gameName: String = ""
 
@@ -120,10 +119,15 @@ struct NewGameView: View {
                     }
                 }
 
-                // --- OPTIONS ---
-                Section("Options") {
-                    Toggle("Inclure Chance", isOn: $enableChance)
+                // --- RÉCAPITULATIF DE LA NOTATION ---
+                Section("Détails de la notation") {
                     if let notation = selectedNotation {
+                        LabeledContent(
+                            "Chance",
+                            value: notation.isChanceEnabled
+                                ? "Activée"
+                                : "Désactivée"
+                        )
                         LabeledContent(
                             "Petite suite",
                             value: notation.isSmallStraightEnabled
@@ -135,6 +139,9 @@ struct NewGameView: View {
                             value: notation.extraYamsBonusMode.label
                         )
                     }
+                }
+
+                Section("Commentaire de la partie") {
                     TextField("Commentaire", text: $comment)
                 }
 
@@ -247,7 +254,7 @@ struct NewGameView: View {
         // 4) Instancie Game
         let game = Game(settings: appSettings, notation: snapshot, columns: 1, comment: comment)
         game.name = nameToUse
-        game.enableChance = enableChance
+        game.enableChance = snapshot.resolvedChanceEnabled
         game.enableSmallStraight = snapshot.resolvedSmallStraightEnabled
         game.smallStraightScore = snapshot.rulePetiteSuite.fixedValue
         game.enableExtraYamsBonus = snapshot.resolvedExtraYamsBonusMode != .disabled
