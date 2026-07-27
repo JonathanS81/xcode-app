@@ -128,7 +128,6 @@ final class Game: Identifiable {
 
     // MARK: - Helpers JSON
     private static let encoder = JSONEncoder()
-    private static let decoder = JSONDecoder()
 
     // MARK: - Fallback pour les anciennes parties
     private func safeDefaultNotation() -> NotationSnapshot {
@@ -163,11 +162,25 @@ final class Game: Identifiable {
     // MARK: - Notation calculée
     var notation: NotationSnapshot {
         if !notationData.isEmpty,
-           let snap = try? Game.decoder.decode(NotationSnapshot.self, from: notationData) {
+           let snap = JSONDecodingCache.shared.decode(
+                NotationSnapshot.self,
+                namespace: "Game",
+                ownerID: id,
+                field: "notation",
+                from: notationData
+           ) {
             return snap
         } else {
             let fallback = safeDefaultNotation()
-            notationData = (try? Game.encoder.encode(fallback)) ?? Data()
+            let data = (try? Game.encoder.encode(fallback)) ?? Data()
+            notationData = data
+            JSONDecodingCache.shared.store(
+                fallback,
+                namespace: "Game",
+                ownerID: id,
+                field: "notation",
+                source: data
+            )
             return fallback
         }
     }

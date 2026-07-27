@@ -18,7 +18,7 @@ final class StatsStore: ObservableObject {
     @Published private(set) var appStats: AppStats? = nil
 
     private var calcTask: Task<Void, Never>?
-    private var lastFingerprint: String = ""
+    private var lastFingerprint: Int?
 
     func refresh(players: [Player], games: [Game]) {
         // Empêche recalcul si rien n’a changé (fingerprint léger)
@@ -31,9 +31,15 @@ final class StatsStore: ObservableObject {
         let g = UnsafeSendable(value: games)
         calcTask = Task { [p, g] in
             // Petit debounce pour regrouper les rafales de changements
-            try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
+            do {
+                try await Task.sleep(nanoseconds: 150_000_000) // 150ms
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
 
-            // Calcul en tâche de fond
+            // Calcul unique après le debounce. Les modèles SwiftData restent
+            // volontairement sur leur acteur d'origine.
             let result = Self.compute(players: p.value, games: g.value)
             guard !Task.isCancelled else { return }
 
@@ -42,13 +48,49 @@ final class StatsStore: ObservableObject {
         }
     }
 
-    private static func fingerprint(players: [Player], games: [Game]) -> String {
-        // très léger : nb joueurs, nb parties, nb complétées, dernières dates
-        let p = players.count
-        let g = games.count
-        let gc = games.filter { $0.statusOrDefault == .completed }.count
-        let lastGameEdit = games.compactMap { $0.endedAt ?? $0.startedAt }.max() ?? .distantPast
-        return "\(p)-\(g)-\(gc)-\(lastGameEdit.timeIntervalSince1970)"
+    private static func fingerprint(players: [Player], games: [Game]) -> Int {
+        var hasher = Hasher()
+
+        for player in players.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
+            hasher.combine(player.id)
+            hasher.combine(player.name)
+            hasher.combine(player.nickname)
+        }
+
+        for game in games.sorted(by: { $0.id.uuidString < $1.id.uuidString }) {
+            hasher.combine(game.id)
+            hasher.combine(game.statusOrDefault.rawValue)
+            hasher.combine(game.endedAt)
+            hasher.combine(game.notationData)
+
+            for scorecard in game.scorecards.sorted(
+                by: { $0.id.uuidString < $1.id.uuidString }
+            ) {
+                hasher.combine(scorecard.id)
+                hasher.combine(scorecard.playerID)
+                hasher.combine(scorecard.onesData)
+                hasher.combine(scorecard.twosData)
+                hasher.combine(scorecard.threesData)
+                hasher.combine(scorecard.foursData)
+                hasher.combine(scorecard.fivesData)
+                hasher.combine(scorecard.sixesData)
+                hasher.combine(scorecard.maxValsData)
+                hasher.combine(scorecard.minValsData)
+                hasher.combine(scorecard.brelanData)
+                hasher.combine(scorecard.chanceData)
+                hasher.combine(scorecard.fullData)
+                hasher.combine(scorecard.carreData)
+                hasher.combine(scorecard.yamsData)
+                hasher.combine(scorecard.suiteData)
+                hasher.combine(scorecard.petiteSuiteData)
+                hasher.combine(scorecard.declaredYamsData)
+                hasher.combine(scorecard.extraYamsAwarded)
+                hasher.combine(scorecard.extraYamsSourceData)
+                hasher.combine(scorecard.extraYamsAwardsData)
+            }
+        }
+
+        return hasher.finalize()
     }
 
     private static func compute(players: [Player], games: [Game]) -> (playerStats: [PlayerStats], appStats: AppStats) {

@@ -8,6 +8,54 @@ import SwiftUI
 import Charts
 import SwiftData
 
+private struct PlayerScorePoint: Identifiable {
+    let index: Int
+    let score: Int
+    var id: Int { index }
+}
+
+private struct ScoreDistributionPoint: Identifiable {
+    let index: Int
+    let label: String
+    let count: Int
+    var id: Int { index }
+}
+
+private struct PlayerStatsSnapshot {
+    let notationOptions: [StatsNotationOption]
+    let completedPlayerGamesCount: Int
+    let displayedStats: PlayerStats
+    let scoresHistory: [Int]
+    let scoresIndexed: [PlayerScorePoint]
+    let scoreDistribution: [ScoreDistributionPoint]
+    let extraYamsCount: Int
+
+    static func empty(for stats: PlayerStats) -> PlayerStatsSnapshot {
+        PlayerStatsSnapshot(
+            notationOptions: [],
+            completedPlayerGamesCount: 0,
+            displayedStats: PlayerStats(
+                playerID: stats.playerID,
+                name: stats.name,
+                gamesPlayed: 0,
+                wins: 0,
+                avgScore: 0,
+                bestScore: 0,
+                bestScoreNotation: nil,
+                worstScore: 0,
+                worstScoreNotation: nil,
+                yamsRate: 0,
+                yamsCount: 0,
+                scoresHistory: []
+            ),
+            scoresHistory: [],
+            scoresIndexed: [],
+            scoreDistribution: [],
+            extraYamsCount: 0
+        )
+    }
+}
+
 struct PlayerStatsDetailView: View {
     
     let stats: PlayerStats
@@ -18,116 +66,107 @@ struct PlayerStatsDetailView: View {
         allPlayers.first(where: { $0.id == stats.playerID })?.color ?? .accentColor
     }
     
-    @EnvironmentObject private var statsStore: StatsStore
-    @Environment(\.modelContext) private var modelContext
     @Query private var allGames: [Game]
     @State private var selectedNotationName: String?
+    @State private var snapshot: PlayerStatsSnapshot?
 
-    private var completedPlayerGames: [Game] {
-        allGames.filter {
-            $0.statusOrDefault == .completed
-                && $0.scorecards.contains {
-                    $0.playerID == stats.playerID
-                }
-        }
-    }
-
-    private var notationOptions: [StatsNotationOption] {
-        StatsService.notationOptions(games: completedPlayerGames)
-    }
-
-    private var filteredCompletedPlayerGames: [Game] {
-        StatsService.completedGames(
-            from: completedPlayerGames,
-            notationName: selectedNotationName
-        )
-    }
-
-    private var displayedStats: PlayerStats {
-        if let filteredStats = StatsService.playerStats(
-            allPlayers: allPlayers,
-            games: filteredCompletedPlayerGames
-        )
-        .first(where: { $0.playerID == stats.playerID }) {
-            return filteredStats
-        }
-        return PlayerStats(
-            playerID: stats.playerID,
-            name: stats.name,
-            gamesPlayed: 0,
-            wins: 0,
-            avgScore: 0,
-            bestScore: 0,
-            bestScoreNotation: nil,
-            worstScore: 0,
-            worstScoreNotation: nil,
-            yamsRate: 0,
-            yamsCount: 0,
-            scoresHistory: []
-        )
-    }
-
-    private var filteredScoresHistory: [Int] {
-        filteredCompletedPlayerGames
-        .sorted {
-            ($0.endedAt ?? $0.createdAt)
-                < ($1.endedAt ?? $1.createdAt)
-        }
-        .compactMap { game in
-            game.scorecards
-                .first { $0.playerID == stats.playerID }
-                .map { StatsService.total(for: $0, game: game) }
-        }
-    }
-
-    // Helpers for charts
-    private var scoresIndexed: [(index: Int, score: Int)] {
-        filteredScoresHistory.enumerated().map {
-            (idx, value) in (idx + 1, value)
-        }
-    }
-    private var scoreDistribution: [(bucket: String, count: Int)] {
-        guard !filteredScoresHistory.isEmpty else { return [] }
+    private func scoreDistribution(
+        from scoresHistory: [Int]
+    ) -> [ScoreDistributionPoint] {
+        guard !scoresHistory.isEmpty else { return [] }
         // Buckets of 50 points, labels simplified: "0", "50", "100", ...
-        let maxScore = filteredScoresHistory.max() ?? 0
+        let maxScore = scoresHistory.max() ?? 0
         let upper = ((maxScore / 50) + 1) * 50
         var bins: [String: Int] = [:]
         for s in stride(from: 0, through: upper, by: 50) {
             let key = String(format: "%d", s)
             bins[key] = 0
         }
-        for v in filteredScoresHistory {
+        for v in scoresHistory {
             let bucketStart = (v / 50) * 50
             let key = String(format: "%d", bucketStart)
             bins[key, default: 0] += 1
         }
         return bins.keys
             .sorted { (Int($0) ?? 0) < (Int($1) ?? 0) }
-            .map { k in (k, bins[k] ?? 0) }
+            .enumerated()
+            .map {
+                ScoreDistributionPoint(
+                    index: $0.offset,
+                    label: $0.element,
+                    count: bins[$0.element] ?? 0
+                )
+            }
     }
 
-    // Indexed bins for chart legibility (show fewer x labels)
-    private var scoreDistributionIndexed: [(idx: Int, label: String, count: Int)] {
-        let bins = scoreDistribution
-        return bins.enumerated().map { (i, el) in (idx: i, label: el.bucket, count: el.count) }
-    }
-
-    private var extraYamsCount: Int {
-        // Compte robustement les primes de Yams pour ce joueur, sans dépendre d'un service externe
-        filteredCompletedPlayerGames.reduce(0) { acc, g in
-            acc + g.scorecards
+    private func makeSnapshot() -> PlayerStatsSnapshot {
+        let completedPlayerGames = allGames.filter {
+            $0.statusOrDefault == .completed
+                && $0.scorecards.contains {
+                    $0.playerID == stats.playerID
+                }
+        }
+        let filteredGames = StatsService.completedGames(
+            from: completedPlayerGames,
+            notationName: selectedNotationName
+        )
+        let displayedStats = StatsService.playerStats(
+            allPlayers: allPlayers,
+            games: filteredGames
+        )
+        .first(where: { $0.playerID == stats.playerID })
+            ?? PlayerStatsSnapshot.empty(for: stats).displayedStats
+        let scoresHistory = filteredGames
+            .sorted {
+                ($0.endedAt ?? $0.createdAt)
+                    < ($1.endedAt ?? $1.createdAt)
+            }
+            .compactMap { game in
+                game.scorecards
+                    .first { $0.playerID == stats.playerID }
+                    .map { StatsService.total(for: $0, game: game) }
+            }
+        let scoresIndexed = scoresHistory.enumerated().map {
+            PlayerScorePoint(index: $0.offset + 1, score: $0.element)
+        }
+        let extraYamsCount = filteredGames.reduce(0) { accumulated, game in
+            accumulated + game.scorecards
                 .filter { $0.playerID == stats.playerID }
-                .map { sc in
-                    (0..<max(sc.columns, sc.extraYamsAwarded.count))
-                        .reduce(0) { $0 + sc.extraYamsAwardsCount(col: $1) }
+                .map { scorecard in
+                    (0..<max(
+                        scorecard.columns,
+                        scorecard.extraYamsAwarded.count
+                    ))
+                    .reduce(0) {
+                        $0 + scorecard.extraYamsAwardsCount(col: $1)
+                    }
                 }
                 .reduce(0, +)
         }
+
+        return PlayerStatsSnapshot(
+            notationOptions: StatsService.notationOptions(
+                games: completedPlayerGames
+            ),
+            completedPlayerGamesCount: completedPlayerGames.count,
+            displayedStats: displayedStats,
+            scoresHistory: scoresHistory,
+            scoresIndexed: scoresIndexed,
+            scoreDistribution: scoreDistribution(from: scoresHistory),
+            extraYamsCount: extraYamsCount
+        )
+    }
+
+    private func refreshSnapshot() {
+        snapshot = makeSnapshot()
     }
 
     var body: some View {
+        let displayedSnapshot = snapshot
+            ?? PlayerStatsSnapshot.empty(for: stats)
+
         List {
-            if !completedPlayerGames.isEmpty {
+            if displayedSnapshot.completedPlayerGamesCount > 0 {
                 Section {
                     Picker(
                         "Notation",
@@ -135,7 +174,7 @@ struct PlayerStatsDetailView: View {
                     ) {
                         Text("Toutes")
                             .tag(String?.none)
-                        ForEach(notationOptions) { option in
+                        ForEach(displayedSnapshot.notationOptions) { option in
                             Text(option.name)
                                 .tag(Optional(option.name))
                         }
@@ -147,8 +186,8 @@ struct PlayerStatsDetailView: View {
             // KPIs row
             Section("Résumé") {
                 KPIGrid(
-                    stats: displayedStats,
-                    extraYamsCount: extraYamsCount
+                    stats: displayedSnapshot.displayedStats,
+                    extraYamsCount: displayedSnapshot.extraYamsCount
                 )
                 .listRowInsets(
                     EdgeInsets(
@@ -160,10 +199,10 @@ struct PlayerStatsDetailView: View {
                 )
             }
 
-            if !filteredScoresHistory.isEmpty {
+            if !displayedSnapshot.scoresHistory.isEmpty {
                 Section("Évolution des scores") {
                     Chart {
-                        ForEach(scoresIndexed, id: \.index) { pt in
+                        ForEach(displayedSnapshot.scoresIndexed) { pt in
                             AreaMark(
                                 x: .value("Partie", pt.index),
                                 y: .value("Score", pt.score)
@@ -192,9 +231,11 @@ struct PlayerStatsDetailView: View {
                 Section("Distribution des scores") {
                     VStack(alignment: .leading, spacing: 4) {
                         Chart {
-                            ForEach(scoreDistributionIndexed, id: \.idx) { bin in
+                            ForEach(
+                                displayedSnapshot.scoreDistribution
+                            ) { bin in
                                 BarMark(
-                                    x: .value("Bin", bin.idx),
+                                    x: .value("Bin", bin.index),
                                     y: .value("Occurrences", bin.count)
                                 )
                                 .foregroundStyle(playerColor)
@@ -206,10 +247,10 @@ struct PlayerStatsDetailView: View {
                             }
                         }
                         .chartXAxis {
-                            let bins = scoreDistributionIndexed
+                            let bins = displayedSnapshot.scoreDistribution
                             let total = bins.count
                             let step = max(1, total / 6)
-                            AxisMarks(values: bins.map { $0.idx }) { value in
+                            AxisMarks(values: bins.map { $0.index }) { value in
                                 AxisGridLine().foregroundStyle(.clear)
                                 AxisTick()
                                 if let i = value.as(Int.self) {
@@ -234,7 +275,7 @@ struct PlayerStatsDetailView: View {
                             .padding(.top, 4)
                     }
                 }
-            } else if !completedPlayerGames.isEmpty {
+            } else if displayedSnapshot.completedPlayerGamesCount > 0 {
                 Section {
                     Text("Aucun score pour cette notation.")
                         .foregroundStyle(.secondary)
@@ -242,6 +283,18 @@ struct PlayerStatsDetailView: View {
             }
         }
         .navigationTitle(stats.name)
+        .task {
+            refreshSnapshot()
+        }
+        .onChange(of: allGames) {
+            refreshSnapshot()
+        }
+        .onChange(of: allPlayers) {
+            refreshSnapshot()
+        }
+        .onChange(of: selectedNotationName) {
+            refreshSnapshot()
+        }
     }
 }
 

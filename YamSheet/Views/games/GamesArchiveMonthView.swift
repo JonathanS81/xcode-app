@@ -30,8 +30,14 @@ struct GamesArchiveMonthView: View {
             ?? Date.distantFuture
     }
 
-    private var filteredGames: [Game] {
-        games
+    private func filteredGames(
+        playersByID: [UUID: Player]
+    ) -> [Game] {
+        let query = searchText.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+
+        return games
             .filter { game in
                 let date = GamesListFormatting.archiveDate(for: game)
                 guard game.statusOrDefault == .completed,
@@ -45,9 +51,6 @@ struct GamesArchiveMonthView: View {
                     return false
                 }
 
-                let query = searchText.trimmingCharacters(
-                    in: .whitespacesAndNewlines
-                )
                 guard !query.isEmpty else { return true }
 
                 if game.name.localizedCaseInsensitiveContains(query) {
@@ -65,8 +68,11 @@ struct GamesArchiveMonthView: View {
     }
 
     var body: some View {
+        let playerLookup = playersByID
+        let displayedGames = filteredGames(playersByID: playerLookup)
+
         Group {
-            if filteredGames.isEmpty {
+            if displayedGames.isEmpty {
                 ContentUnavailableView(
                     "Aucune partie",
                     systemImage: "calendar.badge.exclamationmark",
@@ -75,24 +81,26 @@ struct GamesArchiveMonthView: View {
             } else {
                 List {
                     Section {
-                        ForEach(filteredGames) { game in
+                        ForEach(displayedGames) { game in
                             NavigationLink(value: game.id) {
                                 GameListRow(
                                     game: game,
                                     participantNames: GamesListFormatting
                                         .participantNames(
                                             for: game,
-                                            playersByID: playersByID
+                                            playersByID: playerLookup
                                         )
                                 )
                             }
                         }
-                        .onDelete(perform: delete)
+                        .onDelete { offsets in
+                            delete(offsets, from: displayedGames)
+                        }
                     } header: {
                         HStack {
                             Text(GamesListFormatting.monthTitle(for: monthStart))
                             Spacer()
-                            Text("\(filteredGames.count)")
+                            Text("\(displayedGames.count)")
                                 .monospacedDigit()
                         }
                     }
@@ -105,9 +113,16 @@ struct GamesArchiveMonthView: View {
         .searchable(text: $searchText, prompt: "Partie ou joueur")
     }
 
-    private func delete(_ offsets: IndexSet) {
+    private func delete(
+        _ offsets: IndexSet,
+        from displayedGames: [Game]
+    ) {
         offsets
-            .compactMap { filteredGames.indices.contains($0) ? filteredGames[$0] : nil }
+            .compactMap {
+                displayedGames.indices.contains($0)
+                    ? displayedGames[$0]
+                    : nil
+            }
             .forEach(context.delete)
         try? context.save()
     }

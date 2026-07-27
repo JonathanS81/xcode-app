@@ -534,7 +534,7 @@ struct GameDetailView: View {
     // MARK: - Body
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 12) {
                 modernHeader()
                 turnYamsDeclarationControl()
                 grid()
@@ -579,7 +579,9 @@ struct GameDetailView: View {
                 showAlert = true
             }
         }
-        .onChange(of: game.activePlayerID) { _, _ in ensureTurnSnapshotInitialized() }
+        .onChange(of: game.activePlayerID) { _, _ in
+            ensureTurnSnapshotInitialized()
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { autoPauseIfNeeded(reason: "scenePhase=\(phase)") }
         }
@@ -1047,7 +1049,7 @@ struct GameDetailView: View {
                     let scBinding = $game.scorecards[playerIdx]
                     let isLocked  = scBinding.wrappedValue.isLocked(col: scoreColumnIndex, key: label)
                     let binding   = valueBinding(scBinding, keyPath, scoreColumnIndex, label: label)
-                    let isFilled = (binding.wrappedValue >= 0) // -1 = vide
+                    let isFilled = binding.wrappedValue >= 0 // -1 = vide
                     // En mode sombre, pour la colonne du joueur actif, on garde la teinte claire
                     // même si la case est "remplie", afin que le caret et le texte restent lisibles.
                     let effectiveFilledForTint =
@@ -1060,14 +1062,18 @@ struct GameDetailView: View {
                             let idx = activeScorecardIndex ?? playerIdx
                             if keyPath == \Scorecard.maxVals {
                                 let currentMin = game.scorecards[idx].minVals[scoreColumnIndex]
-                                return ValidationEngine.sanitizeMiddleMax(newVal,
-                                                                          currentMin: (currentMin >= 0 ? currentMin : nil),
-                                                                          strictGreater: (game.notation.middleMode == .bonusGate))
+                                return ValidationEngine.sanitizeMiddleMax(
+                                    newVal,
+                                    currentMin: (currentMin >= 0 ? currentMin : nil),
+                                    strictGreater: (game.notation.middleMode == .bonusGate)
+                                )
                             } else if keyPath == \Scorecard.minVals {
                                 let currentMax = game.scorecards[idx].maxVals[scoreColumnIndex]
-                                return ValidationEngine.sanitizeMiddleMin(newVal,
-                                                                          currentMax: (currentMax >= 0 ? currentMax : nil),
-                                                                          strictGreater: (game.notation.middleMode == .bonusGate))
+                                return ValidationEngine.sanitizeMiddleMin(
+                                    newVal,
+                                    currentMax: (currentMax >= 0 ? currentMax : nil),
+                                    strictGreater: (game.notation.middleMode == .bonusGate)
+                                )
                             } else if let fn = validator {
                                 let raw = newVal ?? -1
                                 let sanitized = fn(newVal)
@@ -1081,19 +1087,22 @@ struct GameDetailView: View {
                         valueFont: badgeFont,
                         effectiveFont: cellFont,
                         contentPadding: cellPadding,
-                        allowedRange: (label == UIStrings.Game.carre ? (4...30) : (5...30)),
-                        allowZero: (label == UIStrings.Game.brelan
-                                     || label == UIStrings.Game.chance
-                                     || label == UIStrings.Game.full
-                                     || label == UIStrings.Game.suite
-                                     || label == UIStrings.Game.petiteSuite
-                                     || label == UIStrings.Game.carre
-                                     || label == UIStrings.Game.yams),
-                        onInvalidInput: { v in
-                            alertMessage = "La valeur \(v) n’est pas valide pour \(label)."
+                        allowedRange: (
+                            label == UIStrings.Game.carre ? (4...30) : (5...30)
+                        ),
+                        allowZero: (
+                            label == UIStrings.Game.brelan
+                                || label == UIStrings.Game.chance
+                                || label == UIStrings.Game.full
+                                || label == UIStrings.Game.suite
+                                || label == UIStrings.Game.petiteSuite
+                                || label == UIStrings.Game.carre
+                                || label == UIStrings.Game.yams
+                        ),
+                        onInvalidInput: { value in
+                            alertMessage = "La valeur \(value) n’est pas valide pour \(label)."
                             showAlert = true
                         },
-                        // IMPORTANT: we keep the control itself transparent so the caret/text stay visible
                         containerFill: AnyShapeStyle(Color.clear),
                         textColor: .primary,
                         caretTint: .primary
@@ -1104,7 +1113,11 @@ struct GameDetailView: View {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(columnTint(pid: pid, isFilled: effectiveFilledForTint))
                         NumericRow(cfg)
-                            .frame(minWidth: minCellWidth, maxWidth: .infinity, alignment: .leading)
+                            .frame(
+                                minWidth: minCellWidth,
+                                maxWidth: .infinity,
+                                alignment: .leading
+                            )
                             .frame(height: cellRowHeight)
                             .background(Color.clear)
                     }
@@ -1258,7 +1271,6 @@ struct GameDetailView: View {
     // MARK: - Extra Yams
     private var extraYamsIsEnabled: Bool {
         game.extraYamsBonusMode != .disabled
-            && game.notation.extraYamsBonusValue > 0
     }
 
     private func storageKey(for label: String) -> String {
@@ -1330,6 +1342,13 @@ struct GameDetailView: View {
             }
             .buttonStyle(.plain)
             .accessibilityHint("Indique que les cinq dés avaient la même valeur")
+        } else {
+            // La place du contrôle reste réservée pour que l'apparition ou la
+            // disparition du bouton ne déplace jamais la feuille de score.
+            Color.clear
+                .frame(maxWidth: .infinity)
+                .frame(height: 38)
+                .accessibilityHidden(true)
         }
     }
 
