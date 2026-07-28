@@ -99,8 +99,8 @@ Le projet cible actuellement les familles iPhone et iPad.
 - [ ] Tester une installation entièrement propre.
 - [ ] Vérifier le premier lancement sans crash.
 - [ ] Vérifier la création des réglages et données initiales.
-- [ ] Tester une mise à jour depuis une version précédente.
-- [ ] Vérifier que les anciennes parties restent lisibles.
+- [x] Tester une mise à jour depuis une version précédente.
+- [x] Vérifier que les anciennes parties restent lisibles.
 - [ ] Vérifier que les anciens scores et statistiques sont inchangés.
 - [ ] Tester une sauvegarde complète `.yamsheet`.
 - [ ] Tester la restauration de cette sauvegarde sur une installation propre.
@@ -177,7 +177,7 @@ Le projet cible actuellement les familles iPhone et iPad.
 ### Appareils
 
 - [ ] Tester sur un véritable iPhone sous iOS 17 ou version proche.
-- [ ] Tester sur un véritable iPhone sous iOS 26 si disponible.
+- [x] Tester sur un véritable iPhone sous iOS 26 si disponible.
 - [ ] Tester sur un véritable iPad si la compatibilité iPad est conservée.
 - [ ] Tester sans connexion Internet.
 - [ ] Tester avec peu d’espace disponible si possible.
@@ -355,6 +355,7 @@ Le projet cible actuellement les familles iPhone et iPad.
 - Audit du stockage : la base active reste dans le dossier Documents ; le helper App Group n’est actuellement jamais appelé.
 - Pages de confidentialité et d’assistance préparées avec l’adresse `yamsheet.contact@gmail.com`.
 - Déploiement automatique GitHub Pages préparé pour le dépôt `JonathanS81/xcode-app`.
+- Build Release installé sur un iPhone 16 Pro sous iOS 26.5.2 par-dessus la version de test existante ; historique et anciennes parties conservés.
 
 ---
 
