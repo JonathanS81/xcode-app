@@ -5,9 +5,6 @@ import SwiftData
 fileprivate func encodeJSON<T: Encodable>(_ value: T) -> Data {
     (try? JSONEncoder().encode(value)) ?? Data()
 }
-fileprivate func decodeJSON<T: Decodable>(_ type: T.Type, from data: Data) -> T {
-    (try? JSONDecoder().decode(type, from: data)) ?? (T.self == [Int].self ? [] as! T : (T.self == [String: Bool].self ? [:] as! T : T.self as! T))
-}
 
 @Model
 final class Scorecard: Identifiable {
@@ -54,6 +51,35 @@ final class Scorecard: Identifiable {
 
     var locksData: Data
 
+    private func decoded<Value: Decodable>(
+        _ type: Value.Type,
+        field: String,
+        from data: Data
+    ) -> Value? {
+        JSONDecodingCache.shared.decode(
+            type,
+            namespace: "Scorecard",
+            ownerID: id,
+            field: field,
+            from: data
+        )
+    }
+
+    private func encoded<Value: Encodable>(
+        _ value: Value,
+        field: String
+    ) -> Data {
+        let data = encodeJSON(value)
+        JSONDecodingCache.shared.store(
+            value,
+            namespace: "Scorecard",
+            ownerID: id,
+            field: field,
+            source: data
+        )
+        return data
+    }
+
     init(playerID: UUID, columns: Int) {
         self.id = UUID()
         self.playerID = playerID
@@ -87,73 +113,85 @@ final class Scorecard: Identifiable {
 
     // Computed properties
     var ones: [Int] {
-        get { decodeJSON([Int].self, from: onesData) }
-        set { onesData = encodeJSON(newValue) }
+        get { decoded([Int].self, field: "ones", from: onesData) ?? [] }
+        set { onesData = encoded(newValue, field: "ones") }
     }
     var twos: [Int] {
-        get { decodeJSON([Int].self, from: twosData) }
-        set { twosData = encodeJSON(newValue) }
+        get { decoded([Int].self, field: "twos", from: twosData) ?? [] }
+        set { twosData = encoded(newValue, field: "twos") }
     }
     var threes: [Int] {
-        get { decodeJSON([Int].self, from: threesData) }
-        set { threesData = encodeJSON(newValue) }
+        get { decoded([Int].self, field: "threes", from: threesData) ?? [] }
+        set { threesData = encoded(newValue, field: "threes") }
     }
     var fours: [Int] {
-        get { decodeJSON([Int].self, from: foursData) }
-        set { foursData = encodeJSON(newValue) }
+        get { decoded([Int].self, field: "fours", from: foursData) ?? [] }
+        set { foursData = encoded(newValue, field: "fours") }
     }
     var fives: [Int] {
-        get { decodeJSON([Int].self, from: fivesData) }
-        set { fivesData = encodeJSON(newValue) }
+        get { decoded([Int].self, field: "fives", from: fivesData) ?? [] }
+        set { fivesData = encoded(newValue, field: "fives") }
     }
     var sixes: [Int] {
-        get { decodeJSON([Int].self, from: sixesData) }
-        set { sixesData = encodeJSON(newValue) }
+        get { decoded([Int].self, field: "sixes", from: sixesData) ?? [] }
+        set { sixesData = encoded(newValue, field: "sixes") }
     }
 
     var maxVals: [Int] {
-        get { decodeJSON([Int].self, from: maxValsData) }
-        set { maxValsData = encodeJSON(newValue) }
+        get { decoded([Int].self, field: "max", from: maxValsData) ?? [] }
+        set { maxValsData = encoded(newValue, field: "max") }
     }
     var minVals: [Int] {
-        get { decodeJSON([Int].self, from: minValsData) }
-        set { minValsData = encodeJSON(newValue) }
+        get { decoded([Int].self, field: "min", from: minValsData) ?? [] }
+        set { minValsData = encoded(newValue, field: "min") }
     }
 
     var brelan: [Int] {
-        get { decodeJSON([Int].self, from: brelanData) }
-        set { brelanData = encodeJSON(newValue) }
+        get { decoded([Int].self, field: "brelan", from: brelanData) ?? [] }
+        set { brelanData = encoded(newValue, field: "brelan") }
     }
     var chance: [Int] {
-        get { decodeJSON([Int].self, from: chanceData) }
-        set { chanceData = encodeJSON(newValue) }
+        get { decoded([Int].self, field: "chance", from: chanceData) ?? [] }
+        set { chanceData = encoded(newValue, field: "chance") }
     }
     var full: [Int] {
-        get { decodeJSON([Int].self, from: fullData) }
-        set { fullData = encodeJSON(newValue) }
+        get { decoded([Int].self, field: "full", from: fullData) ?? [] }
+        set { fullData = encoded(newValue, field: "full") }
     }
     var carre: [Int] {
-        get { decodeJSON([Int].self, from: carreData) }
-        set { carreData = encodeJSON(newValue) }
+        get { decoded([Int].self, field: "carre", from: carreData) ?? [] }
+        set { carreData = encoded(newValue, field: "carre") }
     }
     var yams: [Int] {
-        get { decodeJSON([Int].self, from: yamsData) }
-        set { yamsData = encodeJSON(newValue) }
+        get { decoded([Int].self, field: "yams", from: yamsData) ?? [] }
+        set { yamsData = encoded(newValue, field: "yams") }
     }
 
     var suite: [Int] {
-        get { decodeJSON([Int].self, from: suiteData) }
-        set { suiteData = encodeJSON(newValue) }
+        get { decoded([Int].self, field: "suite", from: suiteData) ?? [] }
+        set { suiteData = encoded(newValue, field: "suite") }
     }
 
     var petiteSuite: [Int] {
-        get { decodeJSON([Int].self, from: petiteSuiteData) }
-        set { petiteSuiteData = encodeJSON(newValue) }
+        get {
+            decoded(
+                [Int].self,
+                field: "petiteSuite",
+                from: petiteSuiteData
+            ) ?? []
+        }
+        set { petiteSuiteData = encoded(newValue, field: "petiteSuite") }
     }
 
     var locks: [String: Bool] {
-        get { decodeJSON([String: Bool].self, from: locksData) }
-        set { locksData = encodeJSON(newValue) }
+        get {
+            decoded(
+                [String: Bool].self,
+                field: "locks",
+                from: locksData
+            ) ?? [:]
+        }
+        set { locksData = encoded(newValue, field: "locks") }
     }
 
     /// Cases hors ligne Yams explicitement déclarées comme provenant de cinq dés identiques.
@@ -161,9 +199,18 @@ final class Scorecard: Identifiable {
     var declaredYams: [String: Bool] {
         get {
             guard let data = declaredYamsData else { return [:] }
-            return decodeJSON([String: Bool].self, from: data)
+            return decoded(
+                [String: Bool].self,
+                field: "declaredYams",
+                from: data
+            ) ?? [:]
         }
-        set { declaredYamsData = encodeJSON(newValue) }
+        set {
+            declaredYamsData = encoded(
+                newValue,
+                field: "declaredYams"
+            )
+        }
     }
 
     /// Catégorie du score auquel une prime est rattachée, indexée par colonne.
@@ -171,9 +218,18 @@ final class Scorecard: Identifiable {
     var extraYamsSources: [String: String] {
         get {
             guard let data = extraYamsSourceData else { return [:] }
-            return decodeJSON([String: String].self, from: data)
+            return decoded(
+                [String: String].self,
+                field: "extraYamsSources",
+                from: data
+            ) ?? [:]
         }
-        set { extraYamsSourceData = encodeJSON(newValue) }
+        set {
+            extraYamsSourceData = encoded(
+                newValue,
+                field: "extraYamsSources"
+            )
+        }
     }
 
     /// Sources des primes attribuées, regroupées par colonne.
@@ -181,9 +237,18 @@ final class Scorecard: Identifiable {
     var extraYamsAwards: [String: [String]] {
         get {
             guard let data = extraYamsAwardsData else { return [:] }
-            return (try? JSONDecoder().decode([String: [String]].self, from: data)) ?? [:]
+            return decoded(
+                [String: [String]].self,
+                field: "extraYamsAwards",
+                from: data
+            ) ?? [:]
         }
-        set { extraYamsAwardsData = encodeJSON(newValue) }
+        set {
+            extraYamsAwardsData = encoded(
+                newValue,
+                field: "extraYamsAwards"
+            )
+        }
     }
 
     // Helpers

@@ -11,7 +11,7 @@ struct StatisticsTab: View {
     @Query private var players: [Player]
     @Query private var games: [Game]
 
-    @StateObject private var store = StatsStore()
+    @EnvironmentObject private var store: StatsStore
     @State private var selection: Int = 0
 
     var body: some View {

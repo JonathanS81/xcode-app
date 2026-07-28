@@ -19,11 +19,20 @@ struct GamesListView: View {
 
     @State private var filter: Filter = .active
 
+    private struct DisplaySnapshot {
+        let active: [Game]
+        let completed: [Game]
+        let recentCompleted: [Game]
+        let monthlyArchives: [GamesMonthArchive]
+    }
+
     private var playersByID: [UUID: Player] {
         Dictionary(uniqueKeysWithValues: players.map { ($0.id, $0) })
     }
 
-    private var selectedPlayerName: String {
+    private func selectedPlayerName(
+        playersByID: [UUID: Player]
+    ) -> String {
         guard let selectedPlayerID,
               let player = playersByID[selectedPlayerID] else {
             return "Tous les joueurs"
@@ -31,34 +40,39 @@ struct GamesListView: View {
         return GamesListFormatting.displayName(for: player)
     }
 
-    private var activeGames: [Game] {
-        games.filter {
-            ($0.statusOrDefault == .inProgress || $0.statusOrDefault == .paused)
-                && matchesCurrentFilters($0)
-        }
-    }
+    private func makeDisplaySnapshot(
+        playersByID: [UUID: Player]
+    ) -> DisplaySnapshot {
+        let query = searchText.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        var active: [Game] = []
+        var completed: [Game] = []
 
-    private var completedGames: [Game] {
-        games
-            .filter {
-                $0.statusOrDefault == .completed
-                    && matchesCurrentFilters($0)
+        for game in games where matchesCurrentFilters(
+            game,
+            playersByID: playersByID,
+            query: query
+        ) {
+            switch game.statusOrDefault {
+            case .inProgress, .paused:
+                active.append(game)
+            case .completed:
+                completed.append(game)
             }
-            .sorted {
-                GamesListFormatting.archiveDate(for: $0)
-                    > GamesListFormatting.archiveDate(for: $1)
-            }
-    }
-
-    private var recentCompletedGames: [Game] {
-        completedGames.filter {
-            GamesListFormatting.archiveDate(for: $0) >= recentCutoff
         }
-    }
 
-    private var monthlyArchives: [GamesMonthArchive] {
-        let olderGames = completedGames.filter {
-            GamesListFormatting.archiveDate(for: $0) < recentCutoff
+        completed.sort {
+            GamesListFormatting.archiveDate(for: $0)
+                > GamesListFormatting.archiveDate(for: $1)
+        }
+
+        let cutoff = recentCutoff
+        let recentCompleted = completed.filter {
+            GamesListFormatting.archiveDate(for: $0) >= cutoff
+        }
+        let olderGames = completed.filter {
+            GamesListFormatting.archiveDate(for: $0) < cutoff
         }
         let grouped = Dictionary(grouping: olderGames) {
             GamesListFormatting.monthStart(
@@ -66,9 +80,16 @@ struct GamesListView: View {
             )
         }
 
-        return grouped
+        let monthlyArchives = grouped
             .map { GamesMonthArchive(monthStart: $0.key, games: $0.value) }
             .sorted { $0.monthStart > $1.monthStart }
+
+        return DisplaySnapshot(
+            active: active,
+            completed: completed,
+            recentCompleted: recentCompleted,
+            monthlyArchives: monthlyArchives
+        )
     }
 
     private var recentCutoff: Date {
@@ -80,6 +101,10 @@ struct GamesListView: View {
     }
 
     var body: some View {
+        let playerLookup = playersByID
+        let display = makeDisplaySnapshot(playersByID: playerLookup)
+        let playerName = selectedPlayerName(playersByID: playerLookup)
+
         NavigationStack {
             VStack(spacing: 0) {
                 Picker("Filtre", selection: $filter) {
@@ -91,13 +116,19 @@ struct GamesListView: View {
                 .padding([.horizontal, .top])
 
                 searchField
-                playerFilter
+                playerFilter(selectedPlayerName: playerName)
 
                 switch filter {
                 case .active:
-                    activeGamesContent
+                    activeGamesContent(
+                        games: display.active,
+                        playersByID: playerLookup
+                    )
                 case .completed:
-                    historyContent
+                    historyContent(
+                        snapshot: display,
+                        playersByID: playerLookup
+                    )
                 }
             }
             .navigationTitle(UIStrings.Common.games)
@@ -158,7 +189,9 @@ struct GamesListView: View {
         .padding(.top, 10)
     }
 
-    private var playerFilter: some View {
+    private func playerFilter(
+        selectedPlayerName: String
+    ) -> some View {
         Menu {
             Button {
                 selectedPlayerID = nil
@@ -211,8 +244,11 @@ struct GamesListView: View {
     }
 
     @ViewBuilder
-    private var activeGamesContent: some View {
-        if activeGames.isEmpty {
+    private func activeGamesContent(
+        games: [Game],
+        playersByID: [UUID: Player]
+    ) -> some View {
+        if games.isEmpty {
             emptyState(
                 title: hasActiveFilters ? "Aucun résultat" : "Aucune partie active",
                 description: hasActiveFilters
@@ -222,16 +258,16 @@ struct GamesListView: View {
         } else {
             List {
                 Section {
-                    ForEach(activeGames) { game in
-                        gameLink(for: game)
+                    ForEach(games) { game in
+                        gameLink(for: game, playersByID: playersByID)
                     }
                     .onDelete { offsets in
-                        delete(offsets, from: activeGames)
+                        delete(offsets, from: games)
                     }
                 } header: {
                     listHeader(
                         title: "Parties actives",
-                        count: activeGames.count
+                        count: games.count
                     )
                 }
             }
@@ -240,8 +276,11 @@ struct GamesListView: View {
     }
 
     @ViewBuilder
-    private var historyContent: some View {
-        if completedGames.isEmpty {
+    private func historyContent(
+        snapshot: DisplaySnapshot,
+        playersByID: [UUID: Player]
+    ) -> some View {
+        if snapshot.completed.isEmpty {
             emptyState(
                 title: hasActiveFilters ? "Aucun résultat" : "Aucune partie terminée",
                 description: hasActiveFilters
@@ -250,25 +289,25 @@ struct GamesListView: View {
             )
         } else {
             List {
-                if !recentCompletedGames.isEmpty {
+                if !snapshot.recentCompleted.isEmpty {
                     Section {
-                        ForEach(recentCompletedGames) { game in
-                            gameLink(for: game)
+                        ForEach(snapshot.recentCompleted) { game in
+                            gameLink(for: game, playersByID: playersByID)
                         }
                         .onDelete { offsets in
-                            delete(offsets, from: recentCompletedGames)
+                            delete(offsets, from: snapshot.recentCompleted)
                         }
                     } header: {
                         listHeader(
                             title: "30 derniers jours",
-                            count: recentCompletedGames.count
+                            count: snapshot.recentCompleted.count
                         )
                     }
                 }
 
-                if !monthlyArchives.isEmpty {
+                if !snapshot.monthlyArchives.isEmpty {
                     Section("Archives") {
-                        ForEach(monthlyArchives) { archive in
+                        ForEach(snapshot.monthlyArchives) { archive in
                             NavigationLink {
                                 GamesArchiveMonthView(
                                     monthStart: archive.monthStart,
@@ -306,13 +345,16 @@ struct GamesListView: View {
             || !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private func matchesCurrentFilters(_ game: Game) -> Bool {
+    private func matchesCurrentFilters(
+        _ game: Game,
+        playersByID: [UUID: Player],
+        query: String
+    ) -> Bool {
         if let selectedPlayerID,
            !game.participantIDs.contains(selectedPlayerID) {
             return false
         }
 
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return true }
 
         if game.name.localizedCaseInsensitiveContains(query) {
@@ -324,7 +366,10 @@ struct GamesListView: View {
             .contains { $0.localizedCaseInsensitiveContains(query) }
     }
 
-    private func gameLink(for game: Game) -> some View {
+    private func gameLink(
+        for game: Game,
+        playersByID: [UUID: Player]
+    ) -> some View {
         NavigationLink(value: game.id) {
             GameListRow(
                 game: game,

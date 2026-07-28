@@ -262,15 +262,18 @@ struct NewGameView: View {
         game.turnOrder = orderedIDs
         game.currentTurnIndex = 0
 
-        // 5) Scorecards
+        // 5) Insère d'abord la partie afin que toutes les relations SwiftData
+        // soient établies entre des objets appartenant au même contexte.
+        context.insert(game)
+
+        // 6) Scorecards
         for pid in orderedIDs {
             let sc = Scorecard(playerID: pid, columns: 1)
-            sc.game = game
             context.insert(sc)
+            sc.game = game
         }
 
-        // 6) Sauvegarde et navigation
-        context.insert(game)
+        // 7) Sauvegarde et navigation
         try? context.save()
 
         // ⚑ Déclenche la navigation SANS animation (évite tout flash sous la cover)
