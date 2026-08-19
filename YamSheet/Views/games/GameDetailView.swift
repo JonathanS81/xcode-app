@@ -1254,20 +1254,20 @@ struct GameDetailView: View {
                     let effectiveFilledForTint =
                         (colorScheme == .dark && isCellEnabled(for: pid)) ? false : isFilled
                     let cfg = NumericRow.Config(
+                        inputID: "\(game.id.uuidString).\(pid.uuidString).\(storageKey(for: label)).\(scoreColumnIndex)",
                         value: binding,
                         isLocked: false,
                         isActive: isEditable,
                         validator: { newVal in
-                            let idx = activeScorecardIndex ?? playerIdx
                             if keyPath == \Scorecard.maxVals {
-                                let currentMin = game.scorecards[idx].minVals[scoreColumnIndex]
+                                let currentMin = game.scorecards[playerIdx].minVals[scoreColumnIndex]
                                 return ValidationEngine.sanitizeMiddleMax(
                                     newVal,
                                     currentMin: (currentMin >= 0 ? currentMin : nil),
                                     strictGreater: (game.notation.middleMode == .bonusGate)
                                 )
                             } else if keyPath == \Scorecard.minVals {
-                                let currentMax = game.scorecards[idx].maxVals[scoreColumnIndex]
+                                let currentMax = game.scorecards[playerIdx].maxVals[scoreColumnIndex]
                                 return ValidationEngine.sanitizeMiddleMin(
                                     newVal,
                                     currentMax: (currentMax >= 0 ? currentMax : nil),
@@ -1312,6 +1312,7 @@ struct GameDetailView: View {
                         RoundedRectangle(cornerRadius: 8)
                             .fill(columnTint(pid: pid, isFilled: effectiveFilledForTint))
                         NumericRow(cfg)
+                            .id(cfg.inputID)
                             .frame(
                                 minWidth: minCellWidth,
                                 maxWidth: .infinity,

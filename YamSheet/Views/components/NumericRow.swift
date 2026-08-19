@@ -11,6 +11,7 @@ struct NumericRow: View {
 
     struct Config {
         var label: String = ""                          // non utilisé ici (le label est géré par la grille)
+        var inputID: String = ""                        // partie + joueur + case + colonne
         var value: Binding<Int>                         // -1 = vide ; >=0 = valeur saisie
         var isLocked: Bool = false
         var isActive: Bool = true                       // joueur actif => style différent
@@ -31,6 +32,7 @@ struct NumericRow: View {
 
     // Etat local d'édition (buffer texte). On ne pousse vers cfg.value QU'AU COMMIT.
     @State private var text: String = ""
+    @State private var bufferOwnerID: String? = nil
     @FocusState private var isFocused: Bool
 
     init(_ cfg: Config) { self.cfg = cfg }
@@ -63,9 +65,20 @@ struct NumericRow: View {
             )
             .onSubmit { commit() }
             .onChange(of: isFocused) { was, now in
-                if was && !now { commit() }             // commit quand on quitte la case
+                if !was && now {
+                    // Une nouvelle édition repart toujours de la valeur de CETTE case.
+                    syncFromBinding()
+                } else if was && !now {
+                    commit()                            // commit quand on quitte la case
+                }
             }
             .onAppear { syncFromBinding() }
+            .onChange(of: cfg.inputID) { _, _ in
+                // SwiftUI peut réutiliser une vue lors d'un changement de joueur.
+                // On interdit alors au tampon précédent de suivre la nouvelle case.
+                isFocused = false
+                syncFromBinding()
+            }
             .onChange(of: cfg.value.wrappedValue) { _, _ in
                 if !isFocused { syncFromBinding() }     // resync si modif externe
             }
@@ -112,13 +125,23 @@ struct NumericRow: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture { isFocused = true }
+        .onTapGesture {
+            if !isFocused { syncFromBinding() }
+            isFocused = true
+        }
         .disabled(cfg.isLocked || !cfg.isActive)
         .animation(.easeInOut(duration: 0.12), value: isFocused)
     }
 
     // MARK: - Commit / Sync
     private func commit() {
+        // Si la vue a été recyclée pour une autre case entre la saisie et la
+        // perte de focus, l'ancien texte ne doit jamais atteindre ce binding.
+        guard bufferOwnerID == cfg.inputID else {
+            syncFromBinding()
+            return
+        }
+
         // Validation différée au commit
         let previous = cfg.value.wrappedValue
         let intVal = Int(text)
@@ -154,6 +177,7 @@ struct NumericRow: View {
     private func syncFromBinding() {
         let v = cfg.value.wrappedValue
         text = (v >= 0) ? String(v) : ""
+        bufferOwnerID = cfg.inputID
     }
 
     // MARK: - Styling
