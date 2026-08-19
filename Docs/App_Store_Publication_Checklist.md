@@ -2,7 +2,7 @@
 
 > Document de référence pour préparer, tester et soumettre la première version publique de YamSheet.
 >
-> Dernière mise à jour : 27 juillet 2026  
+> Dernière mise à jour : 29 juillet 2026
 > Version préparée : 1.0  
 > Build actuel : 1  
 > État actuel : conformité technique en cours
@@ -14,7 +14,7 @@
 
 ## Prochaine action
 
-- [ ] Publier les pages GitHub Pages et vérifier les URL de confidentialité et d’assistance en HTTPS.
+- [ ] Finaliser les textes de la fiche App Store, puis préparer les captures d’écran iPhone.
 
 ---
 
@@ -55,7 +55,7 @@
 - [x] Vérifier que l’App ID `jsdevperso.YamSheet` existe dans le portail Apple Developer.
 - [x] Vérifier que l’App Group `group.jsdevperso.yamsheet` est enregistré.
 - [x] Vérifier que l’App Group est associé à l’App ID YamSheet.
-- [ ] Vérifier que le profil de distribution contient bien cette capacité.
+- [x] Vérifier que le profil de distribution contient bien cette capacité.
 - [ ] Confirmer que la conservation de l’App Group est réellement nécessaire (audit : actuellement inutilisé).
 
 ### Build de distribution
@@ -73,7 +73,7 @@
 
 Le projet cible actuellement les familles iPhone et iPad.
 
-- [ ] Décider si la version 1.0 sera publiée sur iPhone et iPad.
+- [x] Décider que la version 1.0 sera publiée sur iPhone uniquement.
 
 ### Si iPhone et iPad sont conservés
 
@@ -86,8 +86,8 @@ Le projet cible actuellement les familles iPhone et iPad.
 
 ### Si la version devient iPhone uniquement
 
-- [ ] Retirer iPad de `Targeted Device Family`.
-- [ ] Recompiler et revalider l’archive.
+- [x] Retirer iPad de `Targeted Device Family`.
+- [x] Recompiler et revalider l’archive.
 - [ ] Vérifier que l’application n’exige plus de captures iPad.
 
 ---
@@ -186,19 +186,19 @@ Le projet cible actuellement les familles iPhone et iPad.
 
 ## 5. Pages et informations légales
 
-- [ ] Créer une page publique de politique de confidentialité.
+- [x] Créer une page publique de politique de confidentialité.
 - [x] Indiquer que les données restent localement sur l’appareil.
 - [x] Expliquer les exports déclenchés volontairement par l’utilisateur.
 - [x] Ajouter l’adresse de contact `yamsheet.contact@gmail.com`.
-- [ ] Publier la politique sur une URL stable en HTTPS.
-- [ ] Créer une page publique d’assistance.
-- [ ] Ajouter un moyen de contact visible sur la page d’assistance.
-- [ ] Décider du statut DSA : professionnel ou non-professionnel.
-- [ ] Compléter et valider le statut DSA dans App Store Connect.
-- [ ] Répondre au questionnaire de classification d’âge 2026.
-- [ ] Déclarer l’absence de paris, d’argent réel et de jeu d’argent.
-- [ ] Vérifier les droits sur les icônes, images, animations et autres ressources.
-- [ ] Choisir le nom à utiliser pour le copyright.
+- [x] Publier la politique sur une URL stable en HTTPS.
+- [x] Créer une page publique d’assistance.
+- [x] Ajouter un moyen de contact visible sur la page d’assistance.
+- [x] Décider du statut DSA : non-professionnel.
+- [x] Compléter et valider le statut DSA dans App Store Connect.
+- [x] Répondre au questionnaire de classification d’âge 2026.
+- [x] Déclarer l’absence de paris, d’argent réel et de jeu d’argent.
+- [x] Vérifier les droits sur les icônes, images, animations et autres ressources.
+- [x] Choisir le nom à utiliser pour le copyright : `2026 Jonathan Sportiche`.
 - [ ] Vérifier les contrats Apple Developer dans App Store Connect.
 
 ---
@@ -210,14 +210,14 @@ Le projet cible actuellement les familles iPhone et iPad.
 - [x] Choisir le français comme langue principale.
 - [x] Sélectionner le Bundle ID `jsdevperso.YamSheet`.
 - [x] Définir un SKU interne, par exemple `YAMSHEET-IOS-001`.
-- [ ] Choisir la catégorie principale.
-- [ ] Choisir éventuellement une catégorie secondaire.
-- [ ] Définir l’application comme gratuite ou choisir son prix.
-- [ ] Choisir les pays et régions de disponibilité.
-- [ ] Compléter les informations sur les droits de contenu.
-- [ ] Compléter la classification d’âge.
+- [x] Choisir la catégorie principale : Utilitaires.
+- [x] Choisir la catégorie secondaire : Jeux — Board et Family.
+- [x] Définir l’application comme gratuite.
+- [x] Choisir tous les pays et régions de disponibilité.
+- [x] Compléter les informations sur les droits de contenu.
+- [x] Compléter la classification d’âge.
 - [x] Compléter la section App Privacy.
-- [ ] Ajouter l’URL de politique de confidentialité.
+- [x] Ajouter l’URL de politique de confidentialité.
 - [ ] Compléter les informations d’accessibilité si les critères sont vérifiés.
 
 ---
@@ -226,15 +226,15 @@ Le projet cible actuellement les familles iPhone et iPad.
 
 ### Textes
 
-- [ ] Valider le nom public, 30 caractères maximum.
-- [ ] Rédiger le sous-titre, 30 caractères maximum.
-- [ ] Rédiger la description, 4 000 caractères maximum.
-- [ ] Préparer les mots-clés, 100 octets maximum.
+- [x] Valider le nom public : `YamSheet`.
+- [x] Rédiger le sous-titre : `Scores et statistiques de Yams` (29 caractères).
+- [x] Rédiger et valider la description App Store.
+- [x] Préparer les mots-clés App Store (94 octets sur 100).
 - [ ] Rédiger éventuellement le texte promotionnel, 170 caractères maximum.
-- [ ] Ajouter l’URL d’assistance.
-- [ ] Ajouter l’URL de politique de confidentialité.
+- [x] Ajouter l’URL d’assistance.
+- [x] Ajouter l’URL de politique de confidentialité.
 - [ ] Ajouter éventuellement une URL marketing.
-- [ ] Ajouter le copyright.
+- [x] Ajouter le copyright : `2026 Jonathan Sportiche`.
 
 ### Captures
 
@@ -256,22 +256,22 @@ Le projet cible actuellement les familles iPhone et iPad.
 
 ## 8. Archive et TestFlight
 
-- [ ] Sélectionner `Any iOS Device (arm64)` dans Xcode.
-- [ ] Lancer `Product > Archive`.
-- [ ] Ouvrir l’archive dans Organizer.
-- [ ] Générer et examiner le rapport de confidentialité.
-- [ ] Lancer `Validate App`.
-- [ ] Corriger toutes les erreurs de validation.
-- [ ] Examiner chaque avertissement.
-- [ ] Choisir `Distribute App > App Store Connect > Upload`.
-- [ ] Attendre la fin du traitement du build.
-- [ ] Vérifier les éventuels messages d’Apple.
-- [ ] Répondre aux questions de conformité du chiffrement.
-- [ ] Vérifier que le build apparaît dans TestFlight.
-- [ ] Ajouter les testeurs internes.
-- [ ] Installer YamSheet depuis TestFlight.
-- [ ] Effectuer une recette rapide depuis le build TestFlight.
-- [ ] Vérifier la conservation des données après une mise à jour TestFlight.
+- [x] Sélectionner `Any iOS Device (arm64)` dans Xcode.
+- [x] Lancer `Product > Archive`.
+- [x] Ouvrir l’archive dans Organizer.
+- [x] Générer et examiner le rapport de confidentialité.
+- [x] Lancer `Validate App`.
+- [x] Corriger toutes les erreurs de validation — aucune erreur signalée.
+- [x] Examiner chaque avertissement — aucun avertissement signalé.
+- [x] Choisir `Distribute App > App Store Connect > Upload`.
+- [x] Attendre la fin du traitement du build.
+- [x] Vérifier les éventuels messages d’Apple — aucun blocage signalé.
+- [x] Répondre aux questions de conformité du chiffrement — aucune action supplémentaire demandée grâce à `ITSAppUsesNonExemptEncryption = NO`.
+- [x] Vérifier que le build apparaît dans TestFlight avec le statut `Ready to Submit`.
+- [x] Ajouter les testeurs internes.
+- [x] Installer YamSheet depuis TestFlight.
+- [x] Effectuer une recette rapide depuis le build TestFlight.
+- [x] Vérifier la conservation des données après une mise à jour TestFlight.
 - [ ] Ajouter éventuellement des testeurs externes.
 - [ ] Soumettre le build à la Beta App Review si des testeurs externes sont utilisés.
 - [ ] Incrémenter le numéro de build avant chaque nouvel envoi.
@@ -280,7 +280,7 @@ Le projet cible actuellement les familles iPhone et iPad.
 
 ## 9. Soumission à App Review
 
-- [ ] Créer ou ouvrir la version iOS 1.0.
+- [x] Créer ou ouvrir la version iOS 1.0.
 - [ ] Sélectionner le build TestFlight validé.
 - [ ] Vérifier toutes les métadonnées obligatoires.
 - [ ] Ajouter le nom du contact App Review.
@@ -327,10 +327,12 @@ Le projet cible actuellement les familles iPhone et iPad.
 | API avec raison déclarée | `UserDefaults` — `CA92.1` |
 | Langue principale envisagée | Français |
 | Mode de publication envisagé | Publication manuelle après approbation |
-| iPad | À confirmer |
-| Prix | À confirmer |
-| Statut DSA | À confirmer |
-| Catégorie App Store | À confirmer |
+| iPad | Non pour la version 1.0 — iPhone uniquement |
+| Prix | Gratuit |
+| Disponibilité | Tous les pays et régions |
+| Copyright | `2026 Jonathan Sportiche` |
+| Statut DSA | Non-professionnel (`non-trader`) |
+| Catégorie App Store | Utilitaires (principale) / Jeux — Board et Family (secondaire) |
 
 ---
 
@@ -356,6 +358,38 @@ Le projet cible actuellement les familles iPhone et iPad.
 - Pages de confidentialité et d’assistance préparées avec l’adresse `yamsheet.contact@gmail.com`.
 - Déploiement automatique GitHub Pages préparé pour le dépôt `JonathanS81/xcode-app`.
 - Build Release installé sur un iPhone 16 Pro sous iOS 26.5.2 par-dessus la version de test existante ; historique et anciennes parties conservés.
+
+### 28 juillet 2026
+
+- Branche de préparation App Store fusionnée dans `main`.
+- Pages publiques YamSheet déployées par GitHub Pages.
+- URL principale vérifiée en HTTPS : `https://jonathans81.github.io/xcode-app/`.
+- Politique de confidentialité vérifiée en HTTPS : `https://jonathans81.github.io/xcode-app/privacy/`.
+- Page d’assistance vérifiée en HTTPS : `https://jonathans81.github.io/xcode-app/support/`.
+- Ancien domaine `bitcoinference.fr` détaché du site GitHub Pages du compte.
+- URL de politique de confidentialité ajoutée dans App Store Connect.
+- URL d’assistance ajoutée à la fiche française de la version 1.0.
+- Statut DSA déclaré dans App Store Connect : compte non-professionnel (`non-trader`).
+- Catégories App Store enregistrées : Utilitaires en catégorie principale et Jeux — Board et Family en catégorie secondaire.
+- Prix App Store configuré sur Gratuit.
+- Disponibilité App Store configurée pour tous les pays et régions.
+- Provenance et licences des dépendances et animations enregistrées dans `Docs/Third_Party_Content_and_Licenses.md`.
+- Droits de contenu déclarés dans App Store Connect : contenu tiers utilisé avec les droits nécessaires.
+- Copyright de la version 1.0 enregistré : `2026 Jonathan Sportiche`.
+- Questionnaire de classification d’âge 2026 complété, sans jeu d’argent réel ou simulé.
+- Version 1.0 limitée à l’iPhone ; iPad retiré de `Targeted Device Family` pour les configurations Debug et Release de la cible principale.
+- Compilation Release validée sur un simulateur iPhone 15 Pro sous iOS 17 après le passage en iPhone uniquement.
+- Nouvelle archive YamSheet 1.0 (build 1) créée et validée avec succès par Xcode, sans erreur ni avertissement.
+- Archive YamSheet 1.0 (build 1) envoyée avec succès à App Store Connect depuis Xcode.
+- Traitement Apple terminé ; build 1 visible dans TestFlight avec le statut `Ready to Submit`, sans blocage de conformité.
+
+### 29 juillet 2026
+
+- Groupe de test interne créé dans TestFlight.
+- Compte interne ajouté au groupe et YamSheet 1.0 (build 1) installé depuis TestFlight.
+- Recette TestFlight validée : données historiques conservées, ancienne partie consultable, nouvelle partie créée, saisie des scores et des Yams validée, changement de joueur et reprise fonctionnels, persistance après redémarrage confirmée, statistiques et export vérifiés.
+- Nom public et sous-titre App Store validés : `YamSheet` — `Scores et statistiques de Yams`.
+- Description App Store et mots-clés français validés.
 
 ---
 
