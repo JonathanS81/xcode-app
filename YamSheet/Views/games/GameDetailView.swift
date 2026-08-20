@@ -816,7 +816,7 @@ struct GameDetailView: View {
         rule: FigureRule
     ) -> String {
         if value == -1 { return UIStrings.Common.dash }
-        if value == 0 { return "0 — Barré" }
+        if value == 0 { return "0" }
         if rule.mode == .fixed { return "\(name) réussi — \(rule.fixedValue)" }
         return String(value)
     }
@@ -842,6 +842,7 @@ struct GameDetailView: View {
         if needsHorizontal {
             HStack(alignment: .top, spacing: 0) {
                 labelsColumn()
+                    .zIndex(1)
                 ScrollView(.horizontal, showsIndicators: true) {
                     playersColumnsBody()
                         .frame(minWidth: CGFloat(displayPlayerIDs.count) * (minCellWidth + perColumnOuterPad),
@@ -857,7 +858,10 @@ struct GameDetailView: View {
                 }
 
                 // Section haute
-                HStack { scoreHelpLabel(UIStrings.Game.upperSection, font: .headline); Spacer() }
+                sectionHeader(
+                    UIStrings.Game.upperSection,
+                    detail: upperSectionDetailText
+                )
                 rowUpper(label: UIStrings.Game.ones,   face: 1, keyPath: \Scorecard.ones)
                 rowUpper(label: UIStrings.Game.twos,   face: 2, keyPath: \Scorecard.twos)
                 rowUpper(label: UIStrings.Game.threes, face: 3, keyPath: \Scorecard.threes)
@@ -867,13 +871,19 @@ struct GameDetailView: View {
                 totalsRow(label: UIStrings.Game.total1, valueForPlayer: total1Text)
 
                 // Section milieu
-                HStack { scoreHelpLabel(UIStrings.Game.middleSection, font: .headline); Spacer() }
+                sectionHeader(
+                    UIStrings.Game.middleSection,
+                    detail: middleSectionDetailText
+                )
                 rowMaxMin(label: UIStrings.Game.max, keyPath: \Scorecard.maxVals)
                 rowMaxMin(label: UIStrings.Game.min, keyPath: \Scorecard.minVals)
+                if game.notation.middleMode == .bonusGate {
+                    totalsRow(label: "Bonus", valueForPlayer: middleBonusText)
+                }
                 totalsRow(label: UIStrings.Game.total2, valueForPlayer: total2Text)
 
                 // Section basse
-                HStack { scoreHelpLabel(UIStrings.Game.bottomSection, font: .headline); Spacer() }
+                sectionHeader(UIStrings.Game.bottomSection)
                 rowBottom(label: UIStrings.Game.brelan, keyPath: \Scorecard.brelan,
                           validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleBrelan) },
                           displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleBrelan) })
@@ -1027,24 +1037,81 @@ struct GameDetailView: View {
         )
     }
 
-    // Draw a section header label that may visually overflow to the right when there are ≥5 players
-    @ViewBuilder
-    private func overflowHeaderLabel(_ text: String) -> some View {
-        let needsHorizontal = displayPlayerIDs.count >= 5
-        let headerOverflow: CGFloat = 72 // visual extra space to show full title (no layout impact)
-        if needsHorizontal {
-            Color.clear
-                .frame(width: labelColumnWidth)
-                .overlay(alignment: .leading) {
-                    scoreHelpLabel(
-                        text,
-                        font: .headline,
-                        width: labelColumnWidth + headerOverflow
-                    )
-                }
-        } else {
-            scoreHelpLabel(text, font: .headline)
+    private var gridViewportWidth: CGFloat {
+        max(labelColumnWidth, UIScreen.main.bounds.width - outerHPadding - safetyGutter)
+    }
+
+    private var upperSectionDetailText: String {
+        "Bonus de \(game.notation.upperBonusValue) au seuil de \(game.notation.upperBonusThreshold)"
+    }
+
+    private var middleSectionDetailText: String {
+        switch game.notation.middleMode {
+        case .multiplier:
+            return "Multiplicateur par les As"
+        case .bonusGate:
+            return "Bonus de \(game.notation.middleBonusValue) au seuil de \(game.notation.middleBonusSumThreshold)"
         }
+    }
+
+    private func sectionHeader(
+        _ sectionTitle: String,
+        detail: String? = nil
+    ) -> some View {
+        let helpText = scoreHelpKey(for: sectionTitle).flatMap {
+            game.notation.helpText(for: $0)
+        }
+        let fullTitle: Text
+        if let detail {
+            fullTitle = Text(sectionTitle)
+                .font(.headline)
+                + Text(" – ")
+                .font(.headline)
+                + Text(detail)
+                .font(.subheadline)
+                .fontWeight(.regular)
+        } else {
+            fullTitle = Text(sectionTitle)
+                .font(.headline)
+        }
+
+        return HStack(spacing: 5) {
+            fullTitle
+                .lineLimit(1)
+                .layoutPriority(1)
+
+            if scoreHelpIsEnabled, let helpText {
+                Button {
+                    tipTitle = sectionTitle
+                    tipText = helpText
+                    showTip = true
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Aide pour \(sectionTitle)")
+            }
+
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: headerRowHeight)
+    }
+
+    // Draw a section header label across the score columns when there are ≥5 players.
+    @ViewBuilder
+    private func overflowSectionHeader(
+        _ sectionTitle: String,
+        detail: String? = nil
+    ) -> some View {
+        Color.clear
+            .frame(width: labelColumnWidth)
+            .overlay(alignment: .leading) {
+                sectionHeader(sectionTitle, detail: detail)
+                    .frame(width: gridViewportWidth, alignment: .leading)
+            }
     }
 
     private func labelsColumn() -> some View {
@@ -1052,7 +1119,10 @@ struct GameDetailView: View {
             Color.clear.frame(height: namesHeaderHeight + namesHeaderBottom)   // ✅
 
             // Section haute
-            overflowHeaderLabel(UIStrings.Game.upperSection)
+            overflowSectionHeader(
+                UIStrings.Game.upperSection,
+                detail: upperSectionDetailText
+            )
                 .frame(height: headerRowHeight)
             scoreHelpLabel(UIStrings.Game.ones).frame(height: cellRowHeight)
             scoreHelpLabel(UIStrings.Game.twos).frame(height: cellRowHeight)
@@ -1063,14 +1133,20 @@ struct GameDetailView: View {
             Text(UIStrings.Game.total1).font(.headline).frame(height: cellRowHeight, alignment: .leading)
 
             // Section milieu
-            overflowHeaderLabel(UIStrings.Game.middleSection)
+            overflowSectionHeader(
+                UIStrings.Game.middleSection,
+                detail: middleSectionDetailText
+            )
                 .frame(height: headerRowHeight)
             scoreHelpLabel(UIStrings.Game.max).frame(height: cellRowHeight)
             scoreHelpLabel(UIStrings.Game.min).frame(height: cellRowHeight)
+            if game.notation.middleMode == .bonusGate {
+                Text("Bonus").font(.headline).frame(height: cellRowHeight, alignment: .leading)
+            }
             Text(UIStrings.Game.total2).font(.headline).frame(height: cellRowHeight, alignment: .leading)
 
             // Section basse
-            overflowHeaderLabel(UIStrings.Game.bottomSection)
+            overflowSectionHeader(UIStrings.Game.bottomSection)
                 .frame(height: headerRowHeight)
             scoreHelpLabel(UIStrings.Game.brelan).frame(height: cellRowHeight)
             if game.enableChance { scoreHelpLabel(UIStrings.Game.chance).frame(height: cellRowHeight) }
@@ -1136,6 +1212,9 @@ struct GameDetailView: View {
             Color.clear.frame(height: headerRowHeight)
             numericRowPlayersOnly(keyPath: \.maxVals, label: UIStrings.Game.max)
             numericRowPlayersOnly(keyPath: \.minVals, label: UIStrings.Game.min)
+            if game.notation.middleMode == .bonusGate {
+                totalsRowPlayersOnly(valueForPlayer: middleBonusText)
+            }
             totalsRowPlayersOnly(valueForPlayer: total2Text)
 
             // Section basse
@@ -1431,6 +1510,19 @@ struct GameDetailView: View {
         return String(StatsEngine.middleTotal(sc: sc, game: game, col: scoreColumnIndex))
     }
 
+    private func middleBonusText(_ playerIdx: Int) -> String {
+        guard middleCanCompute(playerIdx: playerIdx) else { return UIStrings.Common.dash }
+        let sc = game.scorecards[playerIdx]
+        return String(
+            StatsEngine.middleBonusAmount(
+                maxValue: StatsEngine.norm(sc.maxVals[scoreColumnIndex]),
+                minValue: StatsEngine.norm(sc.minVals[scoreColumnIndex]),
+                threshold: game.notation.middleBonusSumThreshold,
+                bonus: game.notation.middleBonusValue
+            )
+        )
+    }
+
     private func total3Text(_ playerIdx: Int) -> String {
         let sc = game.scorecards[playerIdx]
         return String(StatsEngine.bottomTotal(sc: sc, game: game, col: scoreColumnIndex))
@@ -1705,6 +1797,11 @@ struct GameDetailView: View {
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.8)
                                 .padding(.horizontal, cellPadding)
+                                .frame(
+                                    maxWidth: .infinity,
+                                    maxHeight: .infinity,
+                                    alignment: .center
+                                )
                         }
                     }
                     .frame(minWidth: minCellWidth, maxWidth: .infinity)

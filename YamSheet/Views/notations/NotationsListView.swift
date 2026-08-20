@@ -26,7 +26,8 @@ struct NotationsListView: View {
                             Text("Milieu : " + StatsEngine.middleTooltip(
                                     mode: MiddleRuleMode(rawValue: n.middleModeRaw) ?? .multiplier,
                                     threshold: n.middleBonusSumThreshold,
-                                    bonus: n.middleBonusValue))
+                                    bonus: n.middleBonusValue,
+                                    invalidPairMode: n.middleInvalidPairMode))
                                 .font(.caption).foregroundStyle(.secondary)
                             Text("Bas : tapote une figure pour son détail")
                                 .font(.caption).foregroundStyle(.secondary)

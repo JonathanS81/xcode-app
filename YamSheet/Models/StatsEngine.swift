@@ -44,17 +44,53 @@ struct StatsEngine {
     static func middleTotal(sc: Scorecard, game: Game, col: Int) -> Int {
         let maxV = norm(sc.maxVals[col])
         let minV = norm(sc.minVals[col])
-        switch game.notation.middleMode {
+        return middleScore(
+            maxValue: maxV,
+            minValue: minV,
+            aces: norm(sc.ones[col]),
+            mode: game.notation.middleMode,
+            threshold: game.notation.middleBonusSumThreshold,
+            bonus: game.notation.middleBonusValue,
+            invalidPairMode: game.notation.resolvedMiddleInvalidPairMode
+        )
+    }
+
+    static func middleScore(
+        maxValue: Int,
+        minValue: Int,
+        aces: Int,
+        mode: MiddleRuleMode,
+        threshold: Int,
+        bonus: Int,
+        invalidPairMode: MiddleInvalidPairMode
+    ) -> Int {
+        switch mode {
         case .multiplier:
-            let aces = norm(sc.ones[col]) // #As (0..5)
-            return (maxV - minV) * aces
+            guard maxValue > minValue else { return 0 }
+            return (maxValue - minValue) * aces
         case .bonusGate:
-            var s = maxV + minV
-            if maxV > minV && s >= game.notation.middleBonusSumThreshold {
-                s += game.notation.middleBonusValue
+            let sum = maxValue + minValue
+            guard maxValue > minValue else {
+                return invalidPairMode == .zeroSection ? 0 : sum
             }
-            return s
+            return sum + middleBonusAmount(
+                maxValue: maxValue,
+                minValue: minValue,
+                threshold: threshold,
+                bonus: bonus
+            )
         }
+    }
+
+    static func middleBonusAmount(
+        maxValue: Int,
+        minValue: Int,
+        threshold: Int,
+        bonus: Int
+    ) -> Int {
+        guard maxValue > minValue,
+              maxValue + minValue >= threshold else { return 0 }
+        return bonus
     }
 
     // MARK: - Bottom helpers
@@ -113,12 +149,20 @@ struct StatsEngine {
     }
 
     // MARK: - Tooltips
-    static func middleTooltip(mode: MiddleRuleMode, threshold: Int, bonus: Int) -> String {
+    static func middleTooltip(
+        mode: MiddleRuleMode,
+        threshold: Int,
+        bonus: Int,
+        invalidPairMode: MiddleInvalidPairMode = .keepSum
+    ) -> String {
         switch mode {
         case .multiplier:
-            return "Multiplier : (Max − Min) × nombre d’As."
+            return "Multiplicateur : (Max − Min) × nombre d’As. Si Max ≤ Min, la section vaut 0."
         case .bonusGate:
-            return "BonusGate : si Max > Min et Max+Min ≥ \(threshold) ⇒ +\(bonus)."
+            let invalidText = invalidPairMode == .zeroSection
+                ? "la section vaut 0"
+                : "Max + Min est conservé sans bonus"
+            return "Bonus au 50 : si Max > Min et Max + Min ≥ \(threshold), +\(bonus). Si Max ≤ Min, \(invalidText)."
         }
     }
 

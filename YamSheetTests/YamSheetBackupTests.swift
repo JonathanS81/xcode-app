@@ -23,6 +23,7 @@ final class YamSheetBackupTests: XCTestCase {
             extraYamsBonusValue: 50
         )
         notation.extraYamsBonusMode = .multiple
+        notation.middleInvalidPairMode = .zeroSection
         notation.isChanceEnabled = false
         notation.setHelpText("Additionnez les As obtenus.", for: .ones)
         notation.setHelpText("Règles de la section haute.", for: .sectionUpper)
@@ -109,6 +110,7 @@ final class YamSheetBackupTests: XCTestCase {
             FetchDescriptor<Notation>()
         ).first
         XCTAssertEqual(importedNotationOnly?.isChanceEnabled, false)
+        XCTAssertEqual(importedNotationOnly?.middleInvalidPairMode, .zeroSection)
         XCTAssertEqual(
             try notationContext.fetchCount(FetchDescriptor<Notation>()),
             1
@@ -243,6 +245,22 @@ final class YamSheetBackupTests: XCTestCase {
         XCTAssertEqual(decoded.helpText(for: .sectionUpper), "Ancienne aide haute")
         XCTAssertEqual(decoded.helpText(for: .brelan), "Ancienne aide du brelan")
         XCTAssertNil(decoded.helpText(for: .ones))
+    }
+
+    func testLegacyNotationSnapshotDefaultsInvalidMaxMinPairToKeepSum() throws {
+        let notation = Notation(name: "Ancienne notation")
+        let encoded = try JSONEncoder().encode(notation.snapshot())
+        var object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        object.removeValue(forKey: "middleInvalidPairMode")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+        let decoded = try JSONDecoder().decode(
+            NotationSnapshot.self,
+            from: legacyData
+        )
+
+        XCTAssertEqual(decoded.resolvedMiddleInvalidPairMode, .keepSum)
     }
 
     @MainActor
