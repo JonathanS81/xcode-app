@@ -15,6 +15,21 @@ enum MiddleRuleMode: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// Résultat de la section milieu lorsque Max n'est pas strictement supérieur à Min.
+enum MiddleInvalidPairMode: String, Codable, CaseIterable, Identifiable {
+    case zeroSection
+    case keepSum
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .zeroSection: return "Section à zéro"
+        case .keepSum: return "Conserver Max + Min"
+        }
+    }
+}
+
 // Mode de calcul pour les figures de la section basse
 enum BottomRuleMode: String, Codable, CaseIterable, Identifiable {
     case raw            // valeur saisie telle quelle
@@ -99,6 +114,12 @@ struct NotationSnapshot: Codable {
     var middleMode: MiddleRuleMode
     var middleBonusSumThreshold: Int  // utilisé seulement si .bonusGate
     var middleBonusValue: Int         // utilisé seulement si .bonusGate
+    var middleInvalidPairMode: MiddleInvalidPairMode? = nil
+
+    /// Les parties créées avant l'ajout de cette option utilisaient déjà Max + Min.
+    var resolvedMiddleInvalidPairMode: MiddleInvalidPairMode {
+        middleInvalidPairMode ?? .keepSum
+    }
     
     // Section basse : règles par figure
     var ruleBrelan: FigureRule
@@ -191,6 +212,7 @@ final class Notation {
     var middleModeRaw: String = MiddleRuleMode.multiplier.rawValue   // MiddleRuleMode
     var middleBonusSumThreshold: Int = 50
     var middleBonusValue: Int = 30
+    var middleInvalidPairModeRaw: String? = nil
     
     // section basse : règles encodées en JSON
     var ruleBrelanData: Data = Data()
@@ -251,6 +273,14 @@ final class Notation {
     var middleMode: MiddleRuleMode {
         get { MiddleRuleMode(rawValue: middleModeRaw) ?? .multiplier }
         set { middleModeRaw = newValue.rawValue }
+    }
+
+    var middleInvalidPairMode: MiddleInvalidPairMode {
+        get {
+            guard let raw = middleInvalidPairModeRaw else { return .keepSum }
+            return MiddleInvalidPairMode(rawValue: raw) ?? .keepSum
+        }
+        set { middleInvalidPairModeRaw = newValue.rawValue }
     }
     
     var ruleBrelan: FigureRule {
@@ -392,6 +422,7 @@ final class Notation {
         middleMode: MiddleRuleMode = .multiplier,
         middleBonusSumThreshold: Int = 50,
         middleBonusValue: Int = 30,
+        middleInvalidPairMode: MiddleInvalidPairMode = .keepSum,
         ruleBrelan: FigureRule = FigureRule(),
         ruleChance: FigureRule = FigureRule(),
         chanceEnabled: Bool = true,
@@ -413,6 +444,7 @@ final class Notation {
         self.middleModeRaw = middleMode.rawValue
         self.middleBonusSumThreshold = middleBonusSumThreshold
         self.middleBonusValue = middleBonusValue
+        self.middleInvalidPairModeRaw = middleInvalidPairMode.rawValue
         self.ruleBrelanData = Self.encRule(ruleBrelan)
         self.ruleChanceData = Self.encRule(ruleChance)
         self.chanceEnabled = chanceEnabled
@@ -447,6 +479,7 @@ final class Notation {
             middleMode: middleMode,
             middleBonusSumThreshold: middleBonusSumThreshold,
             middleBonusValue: middleBonusValue,
+            middleInvalidPairMode: middleInvalidPairMode,
             ruleBrelan: ruleBrelan,
             ruleChance: ruleChance,
             chanceEnabled: isChanceEnabled,

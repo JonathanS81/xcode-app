@@ -17,38 +17,20 @@ enum ValidationEngine {
         return max(5, min(30, v))
     }
 
-    /// Max dans [5,30], et cohérence vs Min
-    /// - strictGreater: true pour le mode "Seuil Somme" (Max > Min), sinon Max >= Min
+    /// Max dans [5,30]. La relation avec Min est évaluée au calcul, sans modifier la saisie.
     static func sanitizeMiddleMax(_ newMax: Int?, currentMin: Int?, strictGreater: Bool) -> Int {
+        _ = currentMin
+        _ = strictGreater
         guard let raw = newMax else { return -1 }          // -1 = vide
-        let clamped = clamp5to30(raw)
-        if let minv = currentMin, minv >= 0 {
-            if strictGreater {
-                // Max > Min
-                return max(clamped, min(minv + 1, 30))
-            } else {
-                // Max >= Min
-                return max(clamped, minv)
-            }
-        }
-        return clamped
+        return clamp5to30(raw)
     }
 
-    /// Min dans [5,30], et cohérence vs Max
-    /// - strictGreater: true pour Seuil Somme (Min < Max), sinon Min <= Max
+    /// Min dans [5,30]. La relation avec Max est évaluée au calcul, sans modifier la saisie.
     static func sanitizeMiddleMin(_ newMin: Int?, currentMax: Int?, strictGreater: Bool) -> Int {
+        _ = currentMax
+        _ = strictGreater
         guard let raw = newMin else { return -1 }
-        let clamped = clamp5to30(raw)
-        if let maxv = currentMax, maxv >= 0 {
-            if strictGreater {
-                // Min < Max
-                return min(clamped, max(maxv - 1, 5))
-            } else {
-                // Min <= Max
-                return min(clamped, maxv)
-            }
-        }
-        return clamped
+        return clamp5to30(raw)
     }
 
     // MARK: - Bottom (figures)

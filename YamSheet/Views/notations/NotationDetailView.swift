@@ -38,7 +38,8 @@ struct NotationDetailView: View {
                     StatsEngine.middleTooltip(
                         mode: MiddleRuleMode(rawValue: notation.middleModeRaw) ?? .multiplier,
                         threshold: notation.middleBonusSumThreshold,
-                        bonus: notation.middleBonusValue
+                        bonus: notation.middleBonusValue,
+                        invalidPairMode: notation.middleInvalidPairMode
                     )
                 )
                 .font(.footnote)
@@ -49,6 +50,17 @@ struct NotationDetailView: View {
                             value: $notation.middleBonusSumThreshold, in: 0...200)
                     Stepper("\(UIStrings.Notation.bonus) : \(notation.middleBonusValue)",
                             value: $notation.middleBonusValue, in: 0...200)
+                    Picker(
+                        "Si Max ≤ Min",
+                        selection: Binding(
+                            get: { notation.middleInvalidPairMode },
+                            set: { notation.middleInvalidPairMode = $0 }
+                        )
+                    ) {
+                        ForEach(MiddleInvalidPairMode.allCases) { option in
+                            Text(option.label).tag(option)
+                        }
+                    }
                 }
             }
 

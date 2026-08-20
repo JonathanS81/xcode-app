@@ -564,6 +564,7 @@ private extension YamSheetNotationRecord {
         middleMode = notation.middleMode
         middleBonusSumThreshold = notation.middleBonusSumThreshold
         middleBonusValue = notation.middleBonusValue
+        middleInvalidPairMode = notation.middleInvalidPairMode
         ruleBrelan = notation.ruleBrelan
         ruleChance = notation.ruleChance
         chanceEnabled = notation.isChanceEnabled
@@ -593,6 +594,7 @@ private extension YamSheetNotationRecord {
             middleMode: middleMode,
             middleBonusSumThreshold: middleBonusSumThreshold,
             middleBonusValue: middleBonusValue,
+            middleInvalidPairMode: middleInvalidPairMode ?? .keepSum,
             ruleBrelan: ruleBrelan,
             ruleChance: ruleChance,
             chanceEnabled: chanceEnabled ?? true,

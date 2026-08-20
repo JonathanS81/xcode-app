@@ -172,6 +172,7 @@ struct YamSheetNotationRecord: Codable, Hashable {
     var middleMode: MiddleRuleMode
     var middleBonusSumThreshold: Int
     var middleBonusValue: Int
+    var middleInvalidPairMode: MiddleInvalidPairMode? = nil
     var ruleBrelan: FigureRule
     var ruleChance: FigureRule
     var chanceEnabled: Bool?
