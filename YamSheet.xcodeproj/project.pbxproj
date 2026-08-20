@@ -187,10 +187,10 @@
 				};
 			};
 			buildConfigurationList = 75426E542E5F132800A3A016 /* Build configuration list for PBXProject "YamSheet" */;
-			developmentRegion = en;
+			developmentRegion = fr;
 			hasScannedForEncodings = 0;
 			knownRegions = (
-				en,
+				fr,
 				Base,
 			);
 			mainGroup = 75426E502E5F132800A3A016;
