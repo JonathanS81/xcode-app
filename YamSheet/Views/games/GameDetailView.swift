@@ -633,6 +633,15 @@ struct GameDetailView: View {
         }
     }
 
+    private var navigationHeaderTitle: String {
+        game.name.isEmpty ? UIStrings.Common.game : game.name
+    }
+
+    private var navigationHeaderTitleMaxWidth: CGFloat {
+        let reservedWidth: CGFloat = canShowNextButton ? 246 : 170
+        return max(80, min(220, UIScreen.main.bounds.width - reservedWidth))
+    }
+
     @ViewBuilder
     private func modernHeader() -> some View {
         GDV_Header(title: UIStrings.Game.title, subtitle: statusSubtitle)
@@ -701,7 +710,8 @@ struct GameDetailView: View {
         .onDisappear { autoPauseIfNeeded(reason: "onDisappear") }
         .scrollDismissesKeyboard(.interactively)
         .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
-        .navigationTitle(game.name.isEmpty ? UIStrings.Common.game : game.name)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
 /*#if DEBUG
             ToolbarItem(placement: .navigationBarLeading) {
@@ -716,12 +726,22 @@ struct GameDetailView: View {
                 } label: { Image(systemName: "ladybug.fill") }
             }
 #endif */
+            ToolbarItem(placement: .principal) {
+                Text(navigationHeaderTitle)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: navigationHeaderTitleMaxWidth)
+                    .accessibilityLabel("Partie : \(navigationHeaderTitle)")
+            }
             ToolbarItem(placement: .navigationBarTrailing) {
                 HStack(spacing: 8) {
                     if canShowNextButton {
                         Button("Joueur suivant") { onNextPlayerTapped() }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                     Menu {
                         if game.statusOrDefault == .inProgress {
@@ -732,6 +752,7 @@ struct GameDetailView: View {
                         }
                     } label: { Image(systemName: "ellipsis.circle") }
                 }
+                .fixedSize(horizontal: true, vertical: false)
             }
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
