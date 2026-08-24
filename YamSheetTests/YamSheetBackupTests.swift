@@ -27,6 +27,11 @@ final class YamSheetBackupTests: XCTestCase {
         notation.isChanceEnabled = false
         notation.setHelpText("Additionnez les As obtenus.", for: .ones)
         notation.setHelpText("Règles de la section haute.", for: .sectionUpper)
+        notation.scorecardAppearance = ScorecardAppearance(
+            mode: .photo,
+            imageData: Data([10, 20, 30]),
+            intensity: 0.30
+        )
         settings.showsScoreHelp = false
 
         sourceContext.insert(settings)
@@ -112,6 +117,10 @@ final class YamSheetBackupTests: XCTestCase {
         XCTAssertEqual(importedNotationOnly?.isChanceEnabled, false)
         XCTAssertEqual(importedNotationOnly?.middleInvalidPairMode, .zeroSection)
         XCTAssertEqual(
+            importedNotationOnly?.scorecardAppearance,
+            notation.scorecardAppearance
+        )
+        XCTAssertEqual(
             try notationContext.fetchCount(FetchDescriptor<Notation>()),
             1
         )
@@ -137,6 +146,10 @@ final class YamSheetBackupTests: XCTestCase {
         XCTAssertEqual(decoded.playerStatistics.first?.yamsCount, 2)
         XCTAssertEqual(decoded.playerStatistics.first?.yamsPrimesCount, 1)
         XCTAssertEqual(decoded.notations.first?.chanceEnabled, false)
+        XCTAssertEqual(
+            decoded.notations.first?.scorecardAppearance,
+            notation.scorecardAppearance
+        )
         XCTAssertEqual(
             decoded.notations.first?.scoreHelpTexts?[ScoreHelpKey.ones.rawValue],
             "Additionnez les As obtenus."
@@ -179,12 +192,20 @@ final class YamSheetBackupTests: XCTestCase {
         XCTAssertEqual(importedSettings.first?.showsScoreHelp, false)
         XCTAssertEqual(importedNotations.first?.isChanceEnabled, false)
         XCTAssertEqual(
+            importedNotations.first?.scorecardAppearance,
+            notation.scorecardAppearance
+        )
+        XCTAssertEqual(
             importedNotations.first?.helpTextValue(for: .ones),
             "Additionnez les As obtenus."
         )
         XCTAssertEqual(
             importedGames.first?.notation.helpText(for: .sectionUpper),
             "Règles de la section haute."
+        )
+        XCTAssertEqual(
+            importedGames.first?.notation.resolvedScorecardAppearance,
+            notation.scorecardAppearance
         )
 
         let secondImport = try YamSheetBackupService.importArchive(

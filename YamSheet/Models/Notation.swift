@@ -7,6 +7,51 @@
 
 import Foundation
 import SwiftData
+import SwiftUI
+
+enum ScorecardBackgroundMode: String, Codable, CaseIterable, Identifiable {
+    case standard
+    case color
+    case photo
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .standard: return "Standard"
+        case .color: return "Couleur"
+        case .photo: return "Photo"
+        }
+    }
+}
+
+/// Apparence optionnelle de la feuille de score.
+/// Une valeur absente correspond toujours au fond système historique.
+struct ScorecardAppearance: Codable, Hashable {
+    var mode: ScorecardBackgroundMode = .standard
+    var colorData: Data? = nil
+    var imageData: Data? = nil
+    var intensity: Double = 0.22
+
+    static let standard = ScorecardAppearance()
+
+    var normalizedIntensity: Double {
+        min(max(intensity, 0.05), 1.00)
+    }
+
+    var color: Color {
+        get {
+            guard let colorData,
+                  let decoded = try? JSONDecoder().decode(ColorCodable.self, from: colorData) else {
+                return .accentColor
+            }
+            return decoded.color
+        }
+        set {
+            colorData = try? JSONEncoder().encode(ColorCodable(newValue))
+        }
+    }
+}
 
 // Règle pour la section du milieu
 enum MiddleRuleMode: String, Codable, CaseIterable, Identifiable {
@@ -74,6 +119,75 @@ enum ExtraYamsBonusMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum BuiltInNotationID: String, Codable, CaseIterable, Identifiable {
+    // La valeur persistée reste inchangée pour transformer sans doublon
+    // le prototype « Yahtzee standard » déjà installé en « Standard ».
+    case standard = "yamsheet.yahtzee-standard.v1"
+
+    var id: String { rawValue }
+}
+
+enum BottomScoreField: String, Codable, CaseIterable, Identifiable {
+    case brelan
+    case chance
+    case full
+    case suite
+    case petiteSuite
+    case carre
+    case yams
+
+    var id: String { rawValue }
+}
+
+/// Organisation visible d'une notation.
+///
+/// Cette valeur reste optionnelle dans les modèles persistés et les snapshots :
+/// une partie ou une notation créée avant la V2 conserve donc toutes ses sections.
+struct NotationVisibility: Codable, Hashable {
+    var upperSectionEnabled: Bool
+    var middleSectionEnabled: Bool
+    var bottomSectionEnabled: Bool
+    var brelanEnabled: Bool
+    var fullEnabled: Bool
+    var suiteEnabled: Bool
+    var carreEnabled: Bool
+    var yamsEnabled: Bool
+
+    init(
+        upperSectionEnabled: Bool = true,
+        middleSectionEnabled: Bool = true,
+        bottomSectionEnabled: Bool = true,
+        brelanEnabled: Bool = true,
+        fullEnabled: Bool = true,
+        suiteEnabled: Bool = true,
+        carreEnabled: Bool = true,
+        yamsEnabled: Bool = true
+    ) {
+        self.upperSectionEnabled = upperSectionEnabled
+        self.middleSectionEnabled = middleSectionEnabled
+        self.bottomSectionEnabled = bottomSectionEnabled
+        self.brelanEnabled = brelanEnabled
+        self.fullEnabled = fullEnabled
+        self.suiteEnabled = suiteEnabled
+        self.carreEnabled = carreEnabled
+        self.yamsEnabled = yamsEnabled
+    }
+
+    static let allVisible = NotationVisibility()
+
+    func isEnabled(_ field: BottomScoreField) -> Bool {
+        guard bottomSectionEnabled else { return false }
+        switch field {
+        case .brelan: return brelanEnabled
+        case .chance, .petiteSuite: return true
+        case .full: return fullEnabled
+        case .suite: return suiteEnabled
+        case .carre: return carreEnabled
+        case .yams: return yamsEnabled
+        }
+    }
+}
+
 enum ScoreHelpKey: String, Codable, CaseIterable, Identifiable {
     case sectionUpper
     case ones
@@ -102,6 +216,7 @@ enum ScoreHelpKey: String, Codable, CaseIterable, Identifiable {
 struct NotationSnapshot: Codable {
     // Nom + tooltips globaux
     var name: String
+    var comment: String? = nil
     var tooltipUpper: String?
     var tooltipMiddle: String?
     var tooltipBottom: String?
@@ -152,6 +267,57 @@ struct NotationSnapshot: Codable {
     var extraYamsBonusValue: Int
     var extraYamsBonusMode: ExtraYamsBonusMode? = nil
     var scoreHelpTexts: [String: String]? = nil
+    var visibility: NotationVisibility? = nil
+    var scorecardAppearance: ScorecardAppearance? = nil
+
+    var resolvedScorecardAppearance: ScorecardAppearance {
+        scorecardAppearance ?? .standard
+    }
+
+    var resolvedVisibility: NotationVisibility {
+        visibility ?? .allVisible
+    }
+
+    var upperSectionIsEnabled: Bool {
+        resolvedVisibility.upperSectionEnabled
+    }
+
+    var middleSectionIsEnabled: Bool {
+        resolvedVisibility.middleSectionEnabled
+    }
+
+    var bottomSectionIsEnabled: Bool {
+        resolvedVisibility.bottomSectionEnabled
+    }
+
+    func isBottomFieldEnabled(_ field: BottomScoreField) -> Bool {
+        guard resolvedVisibility.isEnabled(field) else { return false }
+        switch field {
+        case .chance: return resolvedChanceEnabled
+        case .petiteSuite: return resolvedSmallStraightEnabled
+        default: return true
+        }
+    }
+
+    var requiredScoreKeys: [String] {
+        var keys: [String] = []
+        if upperSectionIsEnabled {
+            keys += ["ones", "twos", "threes", "fours", "fives", "sixes"]
+        }
+        if middleSectionIsEnabled {
+            keys += ["max", "min"]
+        }
+        if bottomSectionIsEnabled {
+            if isBottomFieldEnabled(.brelan) { keys.append("brelan") }
+            if isBottomFieldEnabled(.chance) { keys.append("chance") }
+            if isBottomFieldEnabled(.full) { keys.append("full") }
+            if isBottomFieldEnabled(.suite) { keys.append("suite") }
+            if isBottomFieldEnabled(.petiteSuite) { keys.append("petiteSuite") }
+            if isBottomFieldEnabled(.carre) { keys.append("carre") }
+            if isBottomFieldEnabled(.yams) { keys.append("yams") }
+        }
+        return keys
+    }
 
     var resolvedExtraYamsBonusMode: ExtraYamsBonusMode {
         extraYamsBonusMode ?? (extraYamsBonusEnabled ? .single : .disabled)
@@ -199,10 +365,14 @@ final class Notation {
 
     // métadonnées
     var name: String = ""
+    var comment: String = ""
     var tooltipUpper: String? = nil
     var tooltipMiddle: String? = nil
     var tooltipBottom: String? = nil
     var scoreHelpTextsData: Data? = nil
+    var builtInIdentifierRaw: String? = nil
+    var visibilityData: Data? = nil
+    @Attribute(.externalStorage) var scorecardAppearanceData: Data? = nil
     
     // section haute
     var upperBonusThreshold: Int = 63
@@ -268,6 +438,24 @@ final class Notation {
         return (try? decoder.decode([String: String].self, from: data)) ?? [:]
     }
 
+    private static func encVisibility(_ value: NotationVisibility) -> Data? {
+        try? encoder.encode(value)
+    }
+
+    private static func decVisibility(_ data: Data?) -> NotationVisibility {
+        guard let data else { return .allVisible }
+        return (try? decoder.decode(NotationVisibility.self, from: data)) ?? .allVisible
+    }
+
+    private static func encAppearance(_ value: ScorecardAppearance) -> Data? {
+        try? encoder.encode(value)
+    }
+
+    private static func decAppearance(_ data: Data?) -> ScorecardAppearance {
+        guard let data else { return .standard }
+        return (try? decoder.decode(ScorecardAppearance.self, from: data)) ?? .standard
+    }
+
     
     // Computed
     var middleMode: MiddleRuleMode {
@@ -281,6 +469,27 @@ final class Notation {
             return MiddleInvalidPairMode(rawValue: raw) ?? .keepSum
         }
         set { middleInvalidPairModeRaw = newValue.rawValue }
+    }
+
+    var builtInIdentifier: BuiltInNotationID? {
+        get { builtInIdentifierRaw.flatMap(BuiltInNotationID.init(rawValue:)) }
+        set { builtInIdentifierRaw = newValue?.rawValue }
+    }
+
+    var isBuiltIn: Bool { builtInIdentifier != nil }
+
+    var visibility: NotationVisibility {
+        get { Self.decVisibility(visibilityData) }
+        set { visibilityData = Self.encVisibility(newValue) }
+    }
+
+    var scorecardAppearance: ScorecardAppearance {
+        get { Self.decAppearance(scorecardAppearanceData) }
+        set {
+            scorecardAppearanceData = newValue == .standard
+                ? nil
+                : Self.encAppearance(newValue)
+        }
     }
     
     var ruleBrelan: FigureRule {
@@ -414,6 +623,7 @@ final class Notation {
     
     init(
         name: String,
+        comment: String = "",
         tooltipUpper: String? = nil,
         tooltipMiddle: String? = nil,
         tooltipBottom: String? = nil,
@@ -436,6 +646,7 @@ final class Notation {
         extraYamsBonusValue: Int = 0
     ) {
         self.name = name
+        self.comment = comment
         self.tooltipUpper = tooltipUpper
         self.tooltipMiddle = tooltipMiddle
         self.tooltipBottom = tooltipBottom
@@ -471,6 +682,7 @@ final class Notation {
     func snapshot() -> NotationSnapshot {
         NotationSnapshot(
             name: name,
+            comment: comment.isEmpty ? nil : comment,
             tooltipUpper: tooltipUpper,
             tooltipMiddle: tooltipMiddle,
             tooltipBottom: tooltipBottom,
@@ -498,8 +710,47 @@ final class Notation {
             extraYamsBonusEnabled: extraYamsBonusEnabled,
             extraYamsBonusValue: extraYamsBonusValue,
             extraYamsBonusMode: extraYamsBonusMode,
-            scoreHelpTexts: scoreHelpTexts
+            scoreHelpTexts: scoreHelpTexts,
+            visibility: visibility,
+            scorecardAppearance: scorecardAppearance
         )
+    }
+
+    func duplicate(named duplicateName: String? = nil) -> Notation {
+        let copy = Notation(
+            name: duplicateName ?? "\(name) — copie",
+            comment: comment,
+            tooltipUpper: tooltipUpper,
+            tooltipMiddle: tooltipMiddle,
+            tooltipBottom: tooltipBottom,
+            upperBonusThreshold: upperBonusThreshold,
+            upperBonusValue: upperBonusValue,
+            middleMode: middleMode,
+            middleBonusSumThreshold: middleBonusSumThreshold,
+            middleBonusValue: middleBonusValue,
+            middleInvalidPairMode: middleInvalidPairMode,
+            ruleBrelan: ruleBrelan,
+            ruleChance: ruleChance,
+            chanceEnabled: isChanceEnabled,
+            ruleFull: ruleFull,
+            ruleSuite: ruleSuite,
+            rulePetiteSuite: rulePetiteSuite,
+            smallStraightEnabled: isSmallStraightEnabled,
+            ruleCarre: ruleCarre,
+            ruleYams: ruleYams,
+            extraYamsBonusEnabled: extraYamsBonusMode != .disabled,
+            extraYamsBonusValue: extraYamsBonusValue
+        )
+        copy.suiteBigMode = suiteBigMode
+        copy.suiteBigFixed = suiteBigFixed
+        copy.suiteBigFixed1to5 = suiteBigFixed1to5
+        copy.suiteBigFixed2to6 = suiteBigFixed2to6
+        copy.extraYamsBonusMode = extraYamsBonusMode
+        copy.scoreHelpTexts = scoreHelpTexts
+        copy.visibility = visibility
+        copy.scorecardAppearance = scorecardAppearance
+        copy.builtInIdentifier = nil
+        return copy
     }
 
 }

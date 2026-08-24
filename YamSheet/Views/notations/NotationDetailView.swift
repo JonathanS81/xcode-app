@@ -14,98 +14,22 @@ struct NotationDetailView: View {
     @Environment(\.modelContext) private var context
     @Bindable var notation: Notation // ← IMPORTANT
     @State private var showSaved = false
+    @State private var showDuplicated = false
     
     var body: some View {
         Form {
-            Section("Nom") {
-                TextField("Nom de la notation", text: $notation.name)
-            }
-            
-            Section(UIStrings.Notation.upperSection) {
-                Stepper("\(UIStrings.Notation.upperBonusThresholdLabel) : \(notation.upperBonusThreshold)",
-                        value: $notation.upperBonusThreshold, in: 0...200)
-
-                Stepper("\(UIStrings.Notation.upperBonusLabel) : \(notation.upperBonusValue)",
-                        value: $notation.upperBonusValue, in: 0...200)
-            }
-            
-            Section(UIStrings.Notation.middleSection) {
-                Picker(UIStrings.Notation.rulePicker, selection: $notation.middleModeRaw) {
-                    Text(UIStrings.Notation.middleLabel(.multiplier)).tag(MiddleRuleMode.multiplier.rawValue)
-                    Text(UIStrings.Notation.middleLabel(.bonusGate)).tag(MiddleRuleMode.bonusGate.rawValue)
-                }
-                Text(
-                    StatsEngine.middleTooltip(
-                        mode: MiddleRuleMode(rawValue: notation.middleModeRaw) ?? .multiplier,
-                        threshold: notation.middleBonusSumThreshold,
-                        bonus: notation.middleBonusValue,
-                        invalidPairMode: notation.middleInvalidPairMode
-                    )
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-
-                if MiddleRuleMode(rawValue: notation.middleModeRaw) == .bonusGate {
-                    Stepper("\(UIStrings.Notation.thresholdSum) : \(notation.middleBonusSumThreshold)",
-                            value: $notation.middleBonusSumThreshold, in: 0...200)
-                    Stepper("\(UIStrings.Notation.bonus) : \(notation.middleBonusValue)",
-                            value: $notation.middleBonusValue, in: 0...200)
-                    Picker(
-                        "Si Max ≤ Min",
-                        selection: Binding(
-                            get: { notation.middleInvalidPairMode },
-                            set: { notation.middleInvalidPairMode = $0 }
-                        )
-                    ) {
-                        ForEach(MiddleInvalidPairMode.allCases) { option in
-                            Text(option.label).tag(option)
-                        }
-                    }
+            if notation.isBuiltIn {
+                Section {
+                    Label("Modèle intégré protégé", systemImage: "lock.fill")
+                        .foregroundStyle(.secondary)
+                    Text("Dupliquez cette notation pour modifier ses règles ou masquer des éléments de la feuille.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
 
-
-
-            Section("Suites") {
-                BigSuiteRuleBlock(
-                    modeRaw: $notation.suiteBigModeRaw,
-                    singleValue: $notation.suiteBigFixed,
-                    value1to5: $notation.suiteBigFixed1to5,
-                    value2to6: $notation.suiteBigFixed2to6
-                )
-                OptionalFigureRuleBlock(
-                    toggleTitle: "Activer la petite suite",
-                    scoreTitle: "Score petite suite",
-                    isEnabled: Binding(
-                        get: { notation.isSmallStraightEnabled },
-                        set: { notation.isSmallStraightEnabled = $0 }
-                    ),
-                    rule: $notation.rulePetiteSuite
-                )
-            }
-
-            Section("Figures") {
-                FigureRuleRow(title: "Brelan", rule: $notation.ruleBrelan)
-                OptionalFigureRuleBlock(
-                    toggleTitle: "Activer la Chance",
-                    scoreTitle: "Score Chance",
-                    isEnabled: Binding(
-                        get: { notation.isChanceEnabled },
-                        set: { notation.isChanceEnabled = $0 }
-                    ),
-                    rule: $notation.ruleChance
-                )
-                FigureRuleRow(title: "Full", rule: $notation.ruleFull)
-                FigureRuleRow(title: "Carré", rule: $notation.ruleCarre)
-                FigureRuleRow(title: "Yams", rule: $notation.ruleYams)
-                ExtraYamsBonusBlock(
-                    mode: Binding(
-                        get: { notation.extraYamsBonusMode },
-                        set: { notation.extraYamsBonusMode = $0 }
-                    ),
-                    value: $notation.extraYamsBonusValue
-                )
-            }
+            Group {
+            NotationConfigurationSections(notation: notation)
 
             Section {
                 NotationHelpEditor(notation: notation)
@@ -114,18 +38,40 @@ struct NotationDetailView: View {
             } footer: {
                 Text("Seules les aides renseignées pourront être affichées pendant une partie.")
             }
+            }
+            .disabled(notation.isBuiltIn)
+
+            Section {
+                Button {
+                    let copy = notation.duplicate()
+                    context.insert(copy)
+                    try? context.save()
+                    showDuplicated = true
+                } label: {
+                    Label("Dupliquer et personnaliser", systemImage: "doc.on.doc")
+                        .frame(maxWidth: .infinity)
+                }
+            }
         }
+        .scrollDismissesKeyboard(.interactively)
         .navigationTitle(notation.name)
         .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Enregistrer") {
-                    try? context.save()
-                    showSaved = true
+            if !notation.isBuiltIn {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Enregistrer") {
+                        try? context.save()
+                        showSaved = true
+                    }
                 }
             }
         }
         .alert("Enregistré ✅", isPresented: $showSaved) {
             Button("OK", role: .cancel) { }
+        }
+        .alert("Copie créée", isPresented: $showDuplicated) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("La nouvelle notation apparaît dans la liste et peut être entièrement personnalisée.")
         }
     }
 }
@@ -207,30 +153,23 @@ struct FigureRuleRow: View {
             .pickerStyle(.menu)
 
             if rule.mode == .fixed {
-                HStack {
-                    Text(UIStrings.Notation.valueFixed).font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    CompactWheelPicker(value: $rule.fixedValue,
-                                       range: 0...200,
-                                       title: UIStrings.Notation.valueFixed)
-                }
+                NotationNumberRow(
+                    title: UIStrings.Notation.valueFixed,
+                    value: $rule.fixedValue,
+                    range: 0...200
+                )
             } else if rule.mode == .rawPlusFixed {
-                HStack {
-                    Text(UIStrings.Notation.primeFixed).font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    CompactWheelPicker(value: $rule.fixedValue,
-                                       range: 0...200,
-                                       title: UIStrings.Notation.primeFixed)
-                }
+                NotationNumberRow(
+                    title: UIStrings.Notation.primeFixed,
+                    value: $rule.fixedValue,
+                    range: 0...200
+                )
             } else if rule.mode == .rawTimes {
-                HStack {
-                    Text(UIStrings.Notation.multiplier).font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    CompactWheelPicker(value: $rule.multiplier,
-                                       range: 1...10,
-                                       title: UIStrings.Notation.multiplier,
-                                       display: { "×\($0)" })
-                }
+                NotationNumberRow(
+                    title: UIStrings.Notation.multiplier,
+                    value: $rule.multiplier,
+                    range: 1...10
+                )
             }
 
         }
@@ -269,7 +208,7 @@ struct BigSuiteRuleBlock: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Picker(UIStrings.Notation.bigSuite, selection: $modeRaw) {
+            Picker("Notation", selection: $modeRaw) {
                 Text(UIStrings.Notation.suiteModeLabel(.singleFixed))
                     .tag(SuiteBigMode.singleFixed.rawValue)
                 Text(UIStrings.Notation.suiteModeLabel(.splitFixed))
@@ -300,17 +239,7 @@ struct BigSuiteRuleBlock: View {
         title: String,
         value: Binding<Int>
     ) -> some View {
-        HStack {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer()
-            CompactWheelPicker(
-                value: value,
-                range: 0...100,
-                title: title
-            )
-        }
+        NotationNumberRow(title: title, value: value, range: 0...100)
     }
 }
 
@@ -328,17 +257,11 @@ struct ExtraYamsBonusBlock: View {
             .pickerStyle(.menu)
 
             if mode != .disabled {
-                HStack {
-                    Text("Montant par prime")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    CompactWheelPicker(
-                        value: $value,
-                        range: 0...200,
-                        title: "Montant par prime"
-                    )
-                }
+                NotationNumberRow(
+                    title: "Montant par prime",
+                    value: $value,
+                    range: 0...200
+                )
             }
 
             Text(

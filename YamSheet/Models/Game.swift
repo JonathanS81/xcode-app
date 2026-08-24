@@ -190,14 +190,15 @@ final class Game: Identifiable {
         self.id = UUID()
         self.upperBonusThreshold = notation.upperBonusThreshold
         self.upperBonusValue = notation.upperBonusValue
-        self.enableSmallStraight = notation.resolvedSmallStraightEnabled
+        self.enableSmallStraight = notation.isBottomFieldEnabled(.petiteSuite)
         self.smallStraightScore = notation.rulePetiteSuite.fixedValue
-        self.enableChance = notation.resolvedChanceEnabled
+        self.enableChance = notation.isBottomFieldEnabled(.chance)
         self.notationData = (try? JSONEncoder().encode(notation)) ?? Data()
         self.createdAt = Date()
         self.comment = comment
         self.columns = columns
         self.statusRaw = GameStatus.inProgress.rawValue
+        self.requiredNotationKeys = notation.requiredScoreKeys
     }
 }
 
@@ -209,9 +210,10 @@ extension Game {
     ) {
         self.name = name
         let snap = notation.snapshot()
-        self.enableChance = snap.resolvedChanceEnabled
-        self.enableSmallStraight = snap.resolvedSmallStraightEnabled
+        self.enableChance = snap.isBottomFieldEnabled(.chance)
+        self.enableSmallStraight = snap.isBottomFieldEnabled(.petiteSuite)
         self.smallStraightScore = snap.rulePetiteSuite.fixedValue
         self.notationData = (try? JSONEncoder().encode(snap)) ?? Data()
+        self.requiredNotationKeys = snap.requiredScoreKeys
     }
 }

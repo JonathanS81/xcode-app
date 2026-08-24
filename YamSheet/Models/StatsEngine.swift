@@ -16,6 +16,7 @@ struct StatsEngine {
     //helper
     static func extraYamsBonusAmount(sc: Scorecard, game: Game, col: Int) -> Int {
         guard game.enableExtraYamsBonus,                        // partie
+              game.notation.isBottomFieldEnabled(.yams),
               game.notation.extraYamsBonusValue > 0,            // notation (0 = off)
               game.extraYamsBonusMode != .disabled else {
             return 0
@@ -32,6 +33,7 @@ struct StatsEngine {
 
     // MARK: - Upper
     static func upperTotal(sc: Scorecard, game: Game, col: Int) -> Int {
+        guard game.notation.upperSectionIsEnabled else { return 0 }
         let u = [
             sc.ones[col], sc.twos[col], sc.threes[col],
             sc.fours[col], sc.fives[col], sc.sixes[col]
@@ -42,6 +44,7 @@ struct StatsEngine {
 
     // MARK: - Middle
     static func middleTotal(sc: Scorecard, game: Game, col: Int) -> Int {
+        guard game.notation.middleSectionIsEnabled else { return 0 }
         let maxV = norm(sc.maxVals[col])
         let minV = norm(sc.minVals[col])
         return middleScore(
@@ -122,19 +125,30 @@ struct StatsEngine {
 
     static func bottomTotal(sc: Scorecard, game: Game, col: Int) -> Int {
         let n = game.notation
+        guard n.bottomSectionIsEnabled else { return 0 }
 
-        let brelan       = applyFigureRule(sc.brelan[col],       rule: n.ruleBrelan)
-        let chance       = game.enableChance
+        let brelan       = n.isBottomFieldEnabled(.brelan)
+                            ? applyFigureRule(sc.brelan[col],    rule: n.ruleBrelan)
+                            : 0
+        let chance       = n.isBottomFieldEnabled(.chance)
                             ? applyFigureRule(sc.chance[col],    rule: n.ruleChance)
                             : 0
-        let full         = applyFigureRule(sc.full[col],         rule: n.ruleFull)
+        let full         = n.isBottomFieldEnabled(.full)
+                            ? applyFigureRule(sc.full[col],      rule: n.ruleFull)
+                            : 0
 
         // Les valeurs de Suite/Petite suite sont désormais *déjà finales* (0 ou valeur de la Notation)
-        let suite        = suiteScore(sc: sc, col: col)
-        let petiteSuite  = game.enableSmallStraight ? petiteSuiteScore(sc: sc, col: col) : 0
+        let suite        = n.isBottomFieldEnabled(.suite) ? suiteScore(sc: sc, col: col) : 0
+        let petiteSuite  = n.isBottomFieldEnabled(.petiteSuite)
+                            ? petiteSuiteScore(sc: sc, col: col)
+                            : 0
 
-        let carre        = applyFigureRule(sc.carre[col],        rule: n.ruleCarre)
-        let yams         = applyFigureRule(sc.yams[col],         rule: n.ruleYams)
+        let carre        = n.isBottomFieldEnabled(.carre)
+                            ? applyFigureRule(sc.carre[col],     rule: n.ruleCarre)
+                            : 0
+        let yams         = n.isBottomFieldEnabled(.yams)
+                            ? applyFigureRule(sc.yams[col],      rule: n.ruleYams)
+                            : 0
 
         // Prime centralisée ici : valeur unitaire × nombre d'attributions autorisées.
         let extra        = extraYamsBonusAmount(sc: sc, game: game, col: col)

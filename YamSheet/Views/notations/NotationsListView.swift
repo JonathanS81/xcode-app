@@ -19,24 +19,63 @@ struct NotationsListView: View {
                 ForEach(notations) { n in
                     NavigationLink(value: n.id) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(n.name).font(.headline)
-                            // Lignes d’info
-                            Text("Haut : Bonus +\(n.upperBonusValue) si ≥ \(n.upperBonusThreshold)")
-                                .font(.caption).foregroundStyle(.secondary)
-                            Text("Milieu : " + StatsEngine.middleTooltip(
-                                    mode: MiddleRuleMode(rawValue: n.middleModeRaw) ?? .multiplier,
-                                    threshold: n.middleBonusSumThreshold,
-                                    bonus: n.middleBonusValue,
-                                    invalidPairMode: n.middleInvalidPairMode))
-                                .font(.caption).foregroundStyle(.secondary)
-                            Text("Bas : tapote une figure pour son détail")
-                                .font(.caption).foregroundStyle(.secondary)
+                            HStack {
+                                Text(n.name).font(.headline)
+                                if n.isBuiltIn {
+                                    Label("Intégrée", systemImage: "lock.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            if !n.comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Text(n.comment)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                            }
+
+                            if n.visibility.upperSectionEnabled {
+                                sectionDetail(
+                                    "Haut",
+                                    "Bonus +\(n.upperBonusValue) si le total atteint \(n.upperBonusThreshold)"
+                                )
+                            }
+
+                            if n.visibility.middleSectionEnabled {
+                                sectionDetail(
+                                    "Milieu",
+                                    StatsEngine.middleTooltip(
+                                        mode: MiddleRuleMode(rawValue: n.middleModeRaw) ?? .multiplier,
+                                        threshold: n.middleBonusSumThreshold,
+                                        bonus: n.middleBonusValue,
+                                        invalidPairMode: n.middleInvalidPairMode
+                                    )
+                                )
+                            }
+
+                            if n.visibility.bottomSectionEnabled {
+                                sectionDetail("Bas", bottomSectionDetail(for: n))
+                            }
                         }
                     }
-                }
-                .onDelete { idx in
-                    idx.map { notations[$0] }.forEach(context.delete)
-                    try? context.save()
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        Button {
+                            duplicate(n)
+                        } label: {
+                            Label("Dupliquer", systemImage: "doc.on.doc")
+                        }
+                        .tint(.accentColor)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        if !n.isBuiltIn {
+                            Button(role: .destructive) {
+                                context.delete(n)
+                                try? context.save()
+                            } label: {
+                                Label("Supprimer", systemImage: "trash")
+                            }
+                        }
+                    }
                 }
             }
             .navigationTitle(UIStrings.Notation.tabTitle)
@@ -56,5 +95,28 @@ struct NotationsListView: View {
                 }
             }
         }
+    }
+
+    private func duplicate(_ notation: Notation) {
+        context.insert(notation.duplicate())
+        try? context.save()
+    }
+
+    private func sectionDetail(_ title: String, _ detail: String) -> Text {
+        (Text("\(title) : ").fontWeight(.semibold) + Text(detail))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+
+    private func bottomSectionDetail(for notation: Notation) -> String {
+        var categories: [String] = []
+        if notation.visibility.brelanEnabled { categories.append("Brelan") }
+        if notation.isChanceEnabled { categories.append("Chance") }
+        if notation.visibility.fullEnabled { categories.append("Full") }
+        if notation.visibility.suiteEnabled { categories.append("Grande suite") }
+        if notation.isSmallStraightEnabled { categories.append("Petite suite") }
+        if notation.visibility.carreEnabled { categories.append("Carré") }
+        if notation.visibility.yamsEnabled { categories.append("Yams") }
+        return categories.isEmpty ? "Aucune catégorie active" : categories.joined(separator: " • ")
     }
 }

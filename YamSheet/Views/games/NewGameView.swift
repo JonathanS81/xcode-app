@@ -122,21 +122,28 @@ struct NewGameView: View {
                 // --- RÉCAPITULATIF DE LA NOTATION ---
                 Section("Détails de la notation") {
                     if let notation = selectedNotation {
+                        if !notation.comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            Text(notation.comment)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                         LabeledContent(
                             "Chance",
-                            value: notation.isChanceEnabled
+                            value: notation.visibility.isEnabled(.chance) && notation.isChanceEnabled
                                 ? "Activée"
                                 : "Désactivée"
                         )
                         LabeledContent(
                             "Petite suite",
-                            value: notation.isSmallStraightEnabled
+                            value: notation.visibility.isEnabled(.petiteSuite) && notation.isSmallStraightEnabled
                                 ? "Activée"
                                 : "Désactivée"
                         )
                         LabeledContent(
                             "Prime Yams supplémentaire",
-                            value: notation.extraYamsBonusMode.label
+                            value: notation.visibility.isEnabled(.yams)
+                                ? notation.extraYamsBonusMode.label
+                                : "Désactivée"
                         )
                     }
                 }
@@ -254,10 +261,12 @@ struct NewGameView: View {
         // 4) Instancie Game
         let game = Game(settings: appSettings, notation: snapshot, columns: 1, comment: comment)
         game.name = nameToUse
-        game.enableChance = snapshot.resolvedChanceEnabled
-        game.enableSmallStraight = snapshot.resolvedSmallStraightEnabled
+        game.enableChance = snapshot.isBottomFieldEnabled(.chance)
+        game.enableSmallStraight = snapshot.isBottomFieldEnabled(.petiteSuite)
         game.smallStraightScore = snapshot.rulePetiteSuite.fixedValue
-        game.enableExtraYamsBonus = snapshot.resolvedExtraYamsBonusMode != .disabled
+        game.enableExtraYamsBonus = snapshot.isBottomFieldEnabled(.yams)
+            && snapshot.resolvedExtraYamsBonusMode != .disabled
+        game.requiredNotationKeys = snapshot.requiredScoreKeys
         game.participantIDs = orderedIDs
         game.turnOrder = orderedIDs
         game.currentTurnIndex = 0

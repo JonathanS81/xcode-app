@@ -164,6 +164,7 @@ struct YamSheetScorecardRecord: Codable, Hashable {
 
 struct YamSheetNotationRecord: Codable, Hashable {
     var name: String
+    var comment: String? = nil
     var tooltipUpper: String?
     var tooltipMiddle: String?
     var tooltipBottom: String?
@@ -189,6 +190,8 @@ struct YamSheetNotationRecord: Codable, Hashable {
     var extraYamsBonusMode: ExtraYamsBonusMode
     var extraYamsBonusValue: Int
     var scoreHelpTexts: [String: String]? = nil
+    var visibility: NotationVisibility? = nil
+    var scorecardAppearance: ScorecardAppearance? = nil
 }
 
 struct YamSheetSettingsRecord: Codable, Hashable {

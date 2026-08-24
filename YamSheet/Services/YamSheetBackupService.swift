@@ -556,6 +556,7 @@ private extension YamSheetScorecardRecord {
 private extension YamSheetNotationRecord {
     init(_ notation: Notation) {
         name = notation.name
+        comment = notation.comment.isEmpty ? nil : notation.comment
         tooltipUpper = notation.tooltipUpper
         tooltipMiddle = notation.tooltipMiddle
         tooltipBottom = notation.tooltipBottom
@@ -581,11 +582,14 @@ private extension YamSheetNotationRecord {
         extraYamsBonusMode = notation.extraYamsBonusMode
         extraYamsBonusValue = notation.extraYamsBonusValue
         scoreHelpTexts = notation.scoreHelpTexts
+        visibility = notation.visibility
+        scorecardAppearance = notation.scorecardAppearance
     }
 
     func makeNotation() -> Notation {
         let notation = Notation(
             name: name,
+            comment: comment ?? "",
             tooltipUpper: tooltipUpper,
             tooltipMiddle: tooltipMiddle,
             tooltipBottom: tooltipBottom,
@@ -613,6 +617,8 @@ private extension YamSheetNotationRecord {
         notation.suiteBigFixed2to6 = suiteBigFixed2to6
         notation.extraYamsBonusMode = extraYamsBonusMode
         notation.scoreHelpTexts = scoreHelpTexts ?? [:]
+        notation.visibility = visibility ?? .allVisible
+        notation.scorecardAppearance = scorecardAppearance ?? .standard
         return notation
     }
 }
