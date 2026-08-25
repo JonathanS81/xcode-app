@@ -171,12 +171,12 @@ struct StatsEngine {
     ) -> String {
         switch mode {
         case .multiplier:
-            return "Multiplicateur : (Max − Min) × nombre d’As. Si Max ≤ Min, la section vaut 0."
+            return "Le score obtenu correspond au nombre d’As multiplié par la différence entre le Max et le Min."
         case .bonusGate:
             let invalidText = invalidPairMode == .zeroSection
-                ? "la section vaut 0"
-                : "Max + Min est conservé sans bonus"
-            return "Bonus au 50 : si Max > Min et Max + Min ≥ \(threshold), +\(bonus). Si Max ≤ Min, \(invalidText)."
+                ? "Si le Min est supérieur ou égal au Max, toute la section vaut 0."
+                : "Si le Min est supérieur ou égal au Max, la section conserve la somme du Min et du Max, sans bonus."
+            return "Le Max doit être strictement supérieur au Min et la somme du Max et du Min doit atteindre le seuil de \(threshold) points pour obtenir un bonus de \(bonus) points. \(invalidText)"
         }
     }
 

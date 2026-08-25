@@ -97,15 +97,27 @@ struct NotationConfigurationSections: View {
         Section {
             if notation.visibility.bottomSectionEnabled {
                 bottomRule("Brelan", isOn: visibilityBinding(\.brelanEnabled)) {
-                    FigureRuleRow(title: "Notation", rule: $notation.ruleBrelan)
+                    FigureRuleRow(
+                        title: "Notation",
+                        rule: $notation.ruleBrelan,
+                        onModeChanged: { resetHelp(for: .brelan) }
+                    )
                 }
 
                 bottomRule("Chance", isOn: chanceBinding) {
-                    FigureRuleRow(title: "Notation", rule: $notation.ruleChance)
+                    FigureRuleRow(
+                        title: "Notation",
+                        rule: $notation.ruleChance,
+                        onModeChanged: { resetHelp(for: .chance) }
+                    )
                 }
 
                 bottomRule("Full", isOn: visibilityBinding(\.fullEnabled)) {
-                    FigureRuleRow(title: "Notation", rule: $notation.ruleFull)
+                    FigureRuleRow(
+                        title: "Notation",
+                        rule: $notation.ruleFull,
+                        onModeChanged: { resetHelp(for: .full) }
+                    )
                 }
 
                 bottomRule("Grande suite", isOn: visibilityBinding(\.suiteEnabled)) {
@@ -118,15 +130,27 @@ struct NotationConfigurationSections: View {
                 }
 
                 bottomRule("Petite suite", isOn: smallStraightBinding) {
-                    FigureRuleRow(title: "Notation", rule: $notation.rulePetiteSuite)
+                    FigureRuleRow(
+                        title: "Notation",
+                        rule: $notation.rulePetiteSuite,
+                        onModeChanged: { resetHelp(for: .petiteSuite) }
+                    )
                 }
 
                 bottomRule("Carré", isOn: visibilityBinding(\.carreEnabled)) {
-                    FigureRuleRow(title: "Notation", rule: $notation.ruleCarre)
+                    FigureRuleRow(
+                        title: "Notation",
+                        rule: $notation.ruleCarre,
+                        onModeChanged: { resetHelp(for: .carre) }
+                    )
                 }
 
                 bottomRule("Yams", isOn: visibilityBinding(\.yamsEnabled)) {
-                    FigureRuleRow(title: "Notation", rule: $notation.ruleYams)
+                    FigureRuleRow(
+                        title: "Notation",
+                        rule: $notation.ruleYams,
+                        onModeChanged: { resetHelp(for: .yams) }
+                    )
                     ExtraYamsBonusBlock(
                         mode: Binding(
                             get: { notation.extraYamsBonusMode },
@@ -162,6 +186,10 @@ struct NotationConfigurationSections: View {
         Text("Section désactivée")
             .font(.footnote)
             .foregroundStyle(.secondary)
+    }
+
+    private func resetHelp(for key: ScoreHelpKey) {
+        notation.setHelpText("", for: key)
     }
 
     @ViewBuilder

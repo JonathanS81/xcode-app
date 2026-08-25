@@ -36,14 +36,13 @@ struct NotationEditorView: View {
                     Button("Annuler") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Créer") {
+                    Button("Enregistrer") {
                         context.insert(local)
                         try? context.save()
-                        if let cb = onCreated {
-                            cb(local)           // remonte la notation au parent (NewGameView)
-                            // on ne dismiss pas ici : NewGameView fermera la sheet
+                        if let onCreated {
+                            onCreated(local)
                         } else {
-                            dismiss()           // cas d'usage en autonome
+                            dismiss()
                         }
                     }
                     .disabled(local.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

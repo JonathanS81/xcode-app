@@ -9,11 +9,9 @@ import SwiftUI
 import SwiftData
 
 struct NotationDetailView: View {
-    
- 
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
     @Bindable var notation: Notation // ← IMPORTANT
-    @State private var showSaved = false
     @State private var showDuplicated = false
     
     var body: some View {
@@ -60,13 +58,10 @@ struct NotationDetailView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Enregistrer") {
                         try? context.save()
-                        showSaved = true
+                        dismiss()
                     }
                 }
             }
-        }
-        .alert("Enregistré ✅", isPresented: $showSaved) {
-            Button("OK", role: .cancel) { }
         }
         .alert("Copie créée", isPresented: $showDuplicated) {
             Button("OK", role: .cancel) { }
@@ -91,9 +86,16 @@ struct NotationHelpEditor: View {
         }
 
         DisclosureGroup("Section milieu") {
-            helpField("Aide de la section", key: .sectionMiddle)
-            helpField("Max", key: .max)
-            helpField("Min", key: .min)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Aide de la section")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text(notation.helpTextValue(for: .sectionMiddle))
+                    .font(.body)
+                    .foregroundStyle(.primary)
+            }
+            .padding(.vertical, 4)
         }
 
         DisclosureGroup("Section basse") {
@@ -138,12 +140,18 @@ struct NotationHelpEditor: View {
 struct FigureRuleRow: View {
     let title: String
     @Binding var rule: FigureRule
+    var onModeChanged: (() -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Picker(title, selection: Binding(
                 get: { rule.mode.rawValue },
-                set: { rule.mode = BottomRuleMode(rawValue: $0) ?? .raw }
+                set: { rawValue in
+                    let newMode = BottomRuleMode(rawValue: rawValue) ?? .raw
+                    guard newMode != rule.mode else { return }
+                    rule.mode = newMode
+                    onModeChanged?()
+                }
             )) {
                 ForEach(BottomRuleMode.allCases) { mode in
                     Text(UIStrings.Notation.bottomLabel(mode))

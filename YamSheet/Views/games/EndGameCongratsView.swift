@@ -16,7 +16,20 @@ struct EndGameCongratsView: View {
 
     let gameName: String?
     let entries: [Entry]
+    let rematch: (() -> Void)?
     let dismiss: () -> Void
+
+    init(
+        gameName: String?,
+        entries: [Entry],
+        rematch: (() -> Void)? = nil,
+        dismiss: @escaping () -> Void
+    ) {
+        self.gameName = gameName
+        self.entries = entries
+        self.rematch = rematch
+        self.dismiss = dismiss
+    }
 
     // Si dossier BLEU "Resources", laisse "Resources". Si dossier JAUNE (Group), mets nil.
     private let lottieSubdir: String? = "Resources"
@@ -72,10 +85,25 @@ struct EndGameCongratsView: View {
             .clipShape(RoundedRectangle(cornerRadius: 14))
             .shadow(radius: 2)
 
-            Button(action: dismiss) {
-                Text("OK").frame(maxWidth: .infinity)
+            if let rematch {
+                Button(action: rematch) {
+                    Label("Revanche", systemImage: "arrow.counterclockwise")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
+
+            if rematch == nil {
+                Button(action: dismiss) {
+                    Text("OK").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                Button(action: dismiss) {
+                    Text("Fermer").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
         }
         .padding(20)
 

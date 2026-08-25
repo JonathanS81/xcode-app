@@ -134,7 +134,7 @@ enum UIStrings {
         
         // Libellés des modes (section milieu)
         static let middleLabelMultiplier = "Multiplicateur"
-        static let middleLabelBonusGate  = "Bonus au 50"
+        static let middleLabelBonusGate  = "Bonus au seuil"
         static func middleLabel(_ mode: MiddleRuleMode) -> String {
             switch mode {
             case .multiplier: return middleLabelMultiplier
@@ -175,4 +175,3 @@ enum UIStrings {
         static let invite      = "Invité"
     }
 }
-

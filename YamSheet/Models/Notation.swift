@@ -97,6 +97,34 @@ struct FigureRule: Codable, Hashable {
         self.tooltip = tooltip
     }
 }
+
+private func defaultFigureHelpText(
+    for key: ScoreHelpKey,
+    rule: FigureRule
+) -> String? {
+    let diceDescription: String
+    switch key {
+    case .carre:
+        diceDescription = "les quatre dés constituant le Carré"
+    case .brelan, .chance, .full, .yams:
+        diceDescription = "les cinq dés"
+    case .suite, .petiteSuite:
+        diceDescription = "les dés constituant la suite"
+    default:
+        return nil
+    }
+
+    switch rule.mode {
+    case .fixed:
+        return "La figure rapporte une valeur fixe de \(rule.fixedValue) points lorsqu’elle est réalisée."
+    case .raw:
+        return "Additionnez \(diceDescription)."
+    case .rawPlusFixed:
+        return "Additionnez \(diceDescription), puis ajoutez une prime de \(rule.fixedValue) points."
+    case .rawTimes:
+        return "Additionnez \(diceDescription), puis multipliez le résultat par \(rule.multiplier)."
+    }
+}
 enum SuiteBigMode: String, Codable, CaseIterable, Identifiable {
     case singleFixed   // une valeur fixe pour n’importe quelle grande suite
     case splitFixed    // valeur fixe pour 1–5 et valeur fixe pour 2–6
@@ -324,6 +352,19 @@ struct NotationSnapshot: Codable {
     }
 
     func helpText(for key: ScoreHelpKey) -> String? {
+        if key == .max || key == .min {
+            return nil
+        }
+
+        if key == .sectionMiddle {
+            return StatsEngine.middleTooltip(
+                mode: middleMode,
+                threshold: middleBonusSumThreshold,
+                bonus: middleBonusValue,
+                invalidPairMode: resolvedMiddleInvalidPairMode
+            )
+        }
+
         if let text = normalizedHelpText(scoreHelpTexts?[key.rawValue]) {
             return text
         }
@@ -331,24 +372,29 @@ struct NotationSnapshot: Codable {
         switch key {
         case .sectionUpper:
             return normalizedHelpText(tooltipUpper)
-        case .sectionMiddle:
-            return normalizedHelpText(tooltipMiddle)
         case .sectionBottom:
             return normalizedHelpText(tooltipBottom)
         case .brelan:
             return normalizedHelpText(ruleBrelan.tooltip)
+                ?? defaultFigureHelpText(for: key, rule: ruleBrelan)
         case .chance:
             return normalizedHelpText(ruleChance.tooltip)
+                ?? defaultFigureHelpText(for: key, rule: ruleChance)
         case .full:
             return normalizedHelpText(ruleFull.tooltip)
+                ?? defaultFigureHelpText(for: key, rule: ruleFull)
         case .suite:
             return normalizedHelpText(ruleSuite.tooltip)
+                ?? defaultFigureHelpText(for: key, rule: ruleSuite)
         case .petiteSuite:
             return normalizedHelpText(rulePetiteSuite.tooltip)
+                ?? defaultFigureHelpText(for: key, rule: rulePetiteSuite)
         case .carre:
             return normalizedHelpText(ruleCarre.tooltip)
+                ?? defaultFigureHelpText(for: key, rule: ruleCarre)
         case .yams:
             return normalizedHelpText(ruleYams.tooltip)
+                ?? defaultFigureHelpText(for: key, rule: ruleYams)
         default:
             return nil
         }
@@ -535,6 +581,19 @@ final class Notation {
     }
 
     func helpTextValue(for key: ScoreHelpKey) -> String {
+        if key == .max || key == .min {
+            return ""
+        }
+
+        if key == .sectionMiddle {
+            return StatsEngine.middleTooltip(
+                mode: middleMode,
+                threshold: middleBonusSumThreshold,
+                bonus: middleBonusValue,
+                invalidPairMode: middleInvalidPairMode
+            )
+        }
+
         if let text = normalizedHelpText(scoreHelpTexts[key.rawValue]) {
             return text
         }
@@ -542,24 +601,36 @@ final class Notation {
         switch key {
         case .sectionUpper:
             return normalizedHelpText(tooltipUpper) ?? ""
-        case .sectionMiddle:
-            return normalizedHelpText(tooltipMiddle) ?? ""
         case .sectionBottom:
             return normalizedHelpText(tooltipBottom) ?? ""
         case .brelan:
-            return normalizedHelpText(ruleBrelan.tooltip) ?? ""
+            return normalizedHelpText(ruleBrelan.tooltip)
+                ?? defaultFigureHelpText(for: key, rule: ruleBrelan)
+                ?? ""
         case .chance:
-            return normalizedHelpText(ruleChance.tooltip) ?? ""
+            return normalizedHelpText(ruleChance.tooltip)
+                ?? defaultFigureHelpText(for: key, rule: ruleChance)
+                ?? ""
         case .full:
-            return normalizedHelpText(ruleFull.tooltip) ?? ""
+            return normalizedHelpText(ruleFull.tooltip)
+                ?? defaultFigureHelpText(for: key, rule: ruleFull)
+                ?? ""
         case .suite:
-            return normalizedHelpText(ruleSuite.tooltip) ?? ""
+            return normalizedHelpText(ruleSuite.tooltip)
+                ?? defaultFigureHelpText(for: key, rule: ruleSuite)
+                ?? ""
         case .petiteSuite:
-            return normalizedHelpText(rulePetiteSuite.tooltip) ?? ""
+            return normalizedHelpText(rulePetiteSuite.tooltip)
+                ?? defaultFigureHelpText(for: key, rule: rulePetiteSuite)
+                ?? ""
         case .carre:
-            return normalizedHelpText(ruleCarre.tooltip) ?? ""
+            return normalizedHelpText(ruleCarre.tooltip)
+                ?? defaultFigureHelpText(for: key, rule: ruleCarre)
+                ?? ""
         case .yams:
-            return normalizedHelpText(ruleYams.tooltip) ?? ""
+            return normalizedHelpText(ruleYams.tooltip)
+                ?? defaultFigureHelpText(for: key, rule: ruleYams)
+                ?? ""
         default:
             return ""
         }

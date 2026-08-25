@@ -191,6 +191,7 @@ struct GameDetailView: View {
     @State private var turnStartExtraYamsAwardsByPlayer: [UUID: [String: [String]]] = [:]
     @State private var turnStartExtraYamsAwardedByPlayer: [UUID: [Bool]] = [:]
     @State private var currentTurnScoreKeyByPlayer: [UUID: String] = [:]
+    @State private var turnSnapshotGameID: UUID? = nil
 
     // MARK: - Columns (multi-colonnes plus tard)
     private var scoreColumnIndex: Int { 0 }
@@ -363,6 +364,23 @@ struct GameDetailView: View {
                 }
             }
         }
+    }
+
+    /// Les instantanés d'annulation appartiennent exclusivement à une partie.
+    /// SwiftUI peut conserver l'état de la vue quand une revanche remplace
+    /// directement la partie précédente dans la navigation : on vide alors
+    /// toute la mémoire temporaire avant de capturer le nouveau tour.
+    private func resetTurnSnapshotsIfGameChanged() {
+        guard turnSnapshotGameID != game.id else { return }
+
+        turnStartFilledKeysByPlayer.removeAll()
+        turnStartScoreValuesByPlayer.removeAll()
+        turnStartDeclaredYamsByPlayer.removeAll()
+        turnStartExtraYamsSourcesByPlayer.removeAll()
+        turnStartExtraYamsAwardsByPlayer.removeAll()
+        turnStartExtraYamsAwardedByPlayer.removeAll()
+        currentTurnScoreKeyByPlayer.removeAll()
+        turnSnapshotGameID = game.id
     }
 
     private var trackedScoreKeys: [String] {
@@ -578,6 +596,96 @@ struct GameDetailView: View {
         DispatchQueue.main.async { dismiss() }
     }
 
+    /// Crée une nouvelle partie vierge à partir de la partie affichée.
+    /// La notation et l'ordre des joueurs sont conservés, mais aucun score ni
+    /// commentaire propre à l'ancienne partie n'est recopié.
+    private func nextRematchName(from originalName: String) -> String {
+        let name = originalName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return "Revanche" }
+
+        if name == "Revanche" { return "Revanche 2" }
+        if name.hasPrefix("Revanche "),
+           let number = Int(name.dropFirst("Revanche ".count)) {
+            return "Revanche \(number + 1)"
+        }
+
+        let marker = " - Revanche"
+        if let markerRange = name.range(of: marker, options: .backwards) {
+            let baseName = String(name[..<markerRange.lowerBound])
+            let suffix = String(name[markerRange.upperBound...])
+
+            if suffix.isEmpty {
+                return "\(baseName)\(marker) 2"
+            }
+            if suffix.first == " ",
+               let number = Int(suffix.dropFirst()) {
+                return "\(baseName)\(marker) \(number + 1)"
+            }
+        }
+
+        return "\(name)\(marker)"
+    }
+
+    private func createRematch() {
+        let availablePlayerIDs = Set(allPlayers.map(\.id))
+        let storedOrder = game.turnOrder.isEmpty ? game.participantIDs : game.turnOrder
+        let orderedIDs = storedOrder.filter { availablePlayerIDs.contains($0) }
+
+        guard !orderedIDs.isEmpty else {
+            alertMessage = "Impossible de créer la revanche : aucun joueur de cette partie n’est encore disponible."
+            showAlert = true
+            return
+        }
+
+        let settings: AppSettings = {
+            if let existing = appSettings.first { return existing }
+            let created = AppSettings()
+            context.insert(created)
+            return created
+        }()
+
+        let snapshot = game.notation
+        let rematch = Game(
+            settings: settings,
+            notation: snapshot,
+            columns: game.columns,
+            comment: ""
+        )
+        rematch.name = nextRematchName(from: game.name)
+        rematch.enableChance = snapshot.isBottomFieldEnabled(.chance)
+        rematch.enableSmallStraight = snapshot.isBottomFieldEnabled(.petiteSuite)
+        rematch.smallStraightScore = snapshot.rulePetiteSuite.fixedValue
+        rematch.enableExtraYamsBonus = snapshot.isBottomFieldEnabled(.yams)
+            && snapshot.resolvedExtraYamsBonusMode != .disabled
+        rematch.requiredNotationKeys = snapshot.requiredScoreKeys
+        rematch.participantIDs = orderedIDs
+
+        context.insert(rematch)
+        rematch.setTurnOrder(orderedIDs)
+
+        for playerID in orderedIDs {
+            let scorecard = Scorecard(playerID: playerID, columns: game.columns)
+            context.insert(scorecard)
+            scorecard.game = rematch
+        }
+
+        do {
+            try context.save()
+            showCongrats = false
+
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: .openGameFromList,
+                    object: rematch.id
+                )
+            }
+        } catch {
+            context.delete(rematch)
+            alertMessage = "La revanche n’a pas pu être créée. Réessaie dans quelques instants."
+            showAlert = true
+        }
+    }
+
     private func endTurnIfExactlyOneFilledAndAdvance() -> Bool {
         guard game.statusOrDefault == .inProgress, let pid = game.activePlayerID else { return false }
         let now = currentFillableCount(for: pid)
@@ -699,9 +807,88 @@ struct GameDetailView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    @ToolbarContentBuilder
+    private var gameToolbar: some ToolbarContent {
+        if usesCustomScorecardBackground {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .accessibilityLabel("Retour")
+            }
+        }
 
-    // MARK: - Body
-    var body: some View {
+        ToolbarItem(placement: .navigationBarTrailing) {
+            HStack(spacing: 9) {
+                if canShowNextButton {
+                    Button {
+                        onNextPlayerTapped()
+                    } label: {
+                        HStack(spacing: 7) {
+                            Text("Joueur suivant")
+                            Image(systemName: "play.fill")
+                                .font(.caption.weight(.bold))
+                        }
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(nextPlayerButtonForeground)
+                        .lineLimit(1)
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 9)
+                        .background {
+                            Capsule(style: .continuous)
+                                .fill(Color.accentColor)
+                                .overlay {
+                                    Capsule(style: .continuous)
+                                        .stroke(Color.white.opacity(0.95), lineWidth: 2.4)
+                                }
+                                .overlay {
+                                    Capsule(style: .continuous)
+                                        .stroke(nextPlayerButtonOutline, lineWidth: 1.2)
+                                }
+                        }
+                        .shadow(color: Color.white.opacity(0.88), radius: 7)
+                        .shadow(color: Color.accentColor.opacity(0.82), radius: 11)
+                        .shadow(
+                            color: Color.black.opacity(colorScheme == .dark ? 0.46 : 0.28),
+                            radius: 5,
+                            y: 2
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .accessibilityHint("Valide le tour et passe au joueur suivant")
+                }
+
+                Menu {
+                    if game.statusOrDefault == .inProgress {
+                        Button(UIStrings.Game.pause) { pauseAndGoHome() }
+                        Button(UIStrings.Game.finish) { finishNowAndGoHome() }
+                    } else if game.statusOrDefault == .completed {
+                        Button {
+                            createRematch()
+                        } label: {
+                            Label("Revanche", systemImage: "arrow.counterclockwise")
+                        }
+                    } else {
+                        Text("Partie verrouillée")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .accessibilityLabel("Actions de la partie")
+            }
+            .fixedSize(horizontal: true, vertical: false)
+        }
+
+        ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            Button("Terminé") { hideKeyboard() }
+        }
+    }
+
+    private var scorecardMainContent: some View {
         ZStack {
             ScorecardBackgroundView(
                 appearance: game.notation.resolvedScorecardAppearance
@@ -723,49 +910,81 @@ struct GameDetailView: View {
             }
             .background(Color.clear)
         }
-        .sheet(isPresented: $showEndGameSheet) {
-            let entries: [EndGameSheet.Entry] = orderedPlayers
-                .map { p in EndGameSheet.Entry(playerID: p.id, name: p.nickname, score: totalScore(for: p.id)) }
-                .sorted { $0.score > $1.score }
-            EndGameSheet(entries: entries) { showEndGameSheet = false }
-        }
-        .sheet(isPresented: $showOrderSheet) {
-            OrderSetupSheet(
-                players: participants,
-                idFor: { $0.id },
-                nameFor: { $0.nickname },
-                onConfirm: { ids in
-                    game.setTurnOrder(ids); try? context.save()
-                }
-            )
-        }
-        .sheet(isPresented: $showCongrats) {
-            EndGameCongratsView(
-                gameName: game.name,
-                entries: endGameEntries,
-                dismiss: { finishGameAndGoHome() }
-            )
-        }
-        .onAppear {
-            NotificationManager.requestAuthorizationIfNeeded()
-            if game.turnOrder.isEmpty && orderedPlayers.count >= 2 { showOrderSheet = true }
-            ensureTurnSnapshotInitialized()
+    }
 
-            if game.statusOrDefault == .paused {
-                let didAdvance = consumeAutoAdvanceOnPauseFlag()
-                game.statusOrDefault = .inProgress
-                try? context.save()
-                alertMessage = didAdvance
-                    ? "Le tour précédent a été validé. À \(activePlayerName) de jouer !"
-                    : "À \(activePlayerName) de jouer !"
-                showAlert = true
+    private var scorecardWithSheets: some View {
+        scorecardMainContent
+            .sheet(isPresented: $showEndGameSheet) {
+                let entries: [EndGameSheet.Entry] = orderedPlayers
+                    .map { player in
+                        EndGameSheet.Entry(
+                            playerID: player.id,
+                            name: player.nickname,
+                            score: totalScore(for: player.id)
+                        )
+                    }
+                    .sorted { $0.score > $1.score }
+                EndGameSheet(entries: entries) { showEndGameSheet = false }
             }
+            .sheet(isPresented: $showOrderSheet) {
+                OrderSetupSheet(
+                    players: participants,
+                    idFor: { $0.id },
+                    nameFor: { $0.nickname },
+                    onConfirm: { ids in
+                        game.setTurnOrder(ids)
+                        try? context.save()
+                    }
+                )
+            }
+            .sheet(isPresented: $showCongrats) {
+                EndGameCongratsView(
+                    gameName: game.name,
+                    entries: endGameEntries,
+                    rematch: { createRematch() },
+                    dismiss: { finishGameAndGoHome() }
+                )
+            }
+    }
+
+    private func handleScorecardAppear() {
+        NotificationManager.requestAuthorizationIfNeeded()
+        resetTurnSnapshotsIfGameChanged()
+        if game.turnOrder.isEmpty && orderedPlayers.count >= 2 {
+            showOrderSheet = true
         }
+        ensureTurnSnapshotInitialized()
+
+        if game.statusOrDefault == .paused {
+            let didAdvance = consumeAutoAdvanceOnPauseFlag()
+            game.statusOrDefault = .inProgress
+            try? context.save()
+            alertMessage = didAdvance
+                ? "Le tour précédent a été validé. À \(activePlayerName) de jouer !"
+                : "À \(activePlayerName) de jouer !"
+            showAlert = true
+        }
+    }
+
+    private func handleScenePhaseChange(_ phase: ScenePhase) {
+        guard phase != .active else { return }
+        autoPauseIfNeeded(reason: "scenePhase=\(phase)")
+    }
+
+
+    // MARK: - Body
+    var body: some View {
+        scorecardWithSheets
+        .onAppear(perform: handleScorecardAppear)
         .onChange(of: game.activePlayerID) { _, _ in
             ensureTurnSnapshotInitialized()
         }
+        .onChange(of: game.id) { _, _ in
+            resetTurnSnapshotsIfGameChanged()
+            ensureTurnSnapshotInitialized()
+        }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { autoPauseIfNeeded(reason: "scenePhase=\(phase)") }
+            handleScenePhaseChange(phase)
         }
         .onDisappear { autoPauseIfNeeded(reason: "onDisappear") }
         .scrollDismissesKeyboard(.interactively)
@@ -773,97 +992,7 @@ struct GameDetailView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(usesCustomScorecardBackground)
-        .toolbar {
-/*#if DEBUG
-            ToolbarItem(placement: .navigationBarLeading) {
-                Menu {
-                    Button("Debug • Terminer maintenant (popup)") {
-                        debugFillAllRequiredAndComplete(showNotification: false)
-                    }
-                    Button("Debug • Terminer avec notification") {
-                        NotificationManager.requestAuthorizationIfNeeded()
-                        debugFillAllRequiredAndComplete(showNotification: true)
-                    }
-                } label: { Image(systemName: "ladybug.fill") }
-            }
-#endif */
-            if usesCustomScorecardBackground {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                    }
-                    .accessibilityLabel("Retour")
-                }
-            }
-
-            ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: 9) {
-                    if canShowNextButton {
-                        Button {
-                            onNextPlayerTapped()
-                        } label: {
-                            HStack(spacing: 7) {
-                                Text("Joueur suivant")
-                                Image(systemName: "play.fill")
-                                    .font(.caption.weight(.bold))
-                            }
-                            .font(.subheadline.weight(.bold))
-                            .foregroundStyle(nextPlayerButtonForeground)
-                            .lineLimit(1)
-                            .padding(.horizontal, 13)
-                            .padding(.vertical, 9)
-                            .background {
-                                Capsule(style: .continuous)
-                                    .fill(Color.accentColor)
-                                    .overlay {
-                                        Capsule(style: .continuous)
-                                            .stroke(Color.white.opacity(0.95), lineWidth: 2.4)
-                                    }
-                                    .overlay {
-                                        Capsule(style: .continuous)
-                                            .stroke(nextPlayerButtonOutline, lineWidth: 1.2)
-                                    }
-                            }
-                            .shadow(
-                                color: Color.white.opacity(0.88),
-                                radius: 7
-                            )
-                            .shadow(
-                                color: Color.accentColor.opacity(0.82),
-                                radius: 11
-                            )
-                            .shadow(
-                                color: Color.black.opacity(colorScheme == .dark ? 0.46 : 0.28),
-                                radius: 5,
-                                y: 2
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .fixedSize(horizontal: true, vertical: false)
-                        .accessibilityHint("Valide le tour et passe au joueur suivant")
-                    }
-
-                    Menu {
-                        if game.statusOrDefault == .inProgress {
-                            Button(UIStrings.Game.pause)  { pauseAndGoHome() }
-                            Button(UIStrings.Game.finish) { finishNowAndGoHome() }
-                        } else {
-                            Text("Partie verrouillée")
-                        }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                    }
-                    .accessibilityLabel("Actions de la partie")
-                }
-                .fixedSize(horizontal: true, vertical: false)
-            }
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Terminé") { hideKeyboard() }
-            }
-        }
+        .toolbar { gameToolbar }
         .alert(alertMessage, isPresented: $showAlert) { Button(UIStrings.Common.ok, role: .cancel) { } }
         .alert(tipTitle, isPresented: $showTip) {
             Button(UIStrings.Common.ok, role: .cancel) { }
@@ -1018,19 +1147,25 @@ struct GameDetailView: View {
                 if game.notation.bottomSectionIsEnabled {
                     sectionHeader(UIStrings.Game.bottomSection)
                     if game.notation.isBottomFieldEnabled(.brelan) {
-                        rowBottom(label: UIStrings.Game.brelan, keyPath: \Scorecard.brelan,
-                                  validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleBrelan) },
-                                  displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleBrelan) })
+                        rowFigure(
+                            label: UIStrings.Game.brelan,
+                            rule: game.notation.ruleBrelan,
+                            keyPath: \Scorecard.brelan
+                        )
                     }
                     if game.notation.isBottomFieldEnabled(.chance) {
-                        rowBottom(label: UIStrings.Game.chance, keyPath: \Scorecard.chance,
-                                  validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleChance) },
-                                  displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleChance) })
+                        rowFigure(
+                            label: UIStrings.Game.chance,
+                            rule: game.notation.ruleChance,
+                            keyPath: \Scorecard.chance
+                        )
                     }
                     if game.notation.isBottomFieldEnabled(.full) {
-                        rowBottom(label: UIStrings.Game.full, keyPath: \Scorecard.full,
-                                  validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleFull) },
-                                  displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleFull) })
+                        rowFigure(
+                            label: UIStrings.Game.full,
+                            rule: game.notation.ruleFull,
+                            keyPath: \Scorecard.full
+                        )
                     }
 
                     if game.notation.isBottomFieldEnabled(.suite) {
@@ -1447,22 +1582,25 @@ struct GameDetailView: View {
             if game.notation.bottomSectionIsEnabled {
                 Color.clear.frame(height: headerRowHeight)
                 if game.notation.isBottomFieldEnabled(.brelan) {
-                    numericRowPlayersOnly(keyPath: \.brelan,
-                                          label: UIStrings.Game.brelan,
-                                          validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleBrelan) },
-                                          displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleBrelan) })
+                    figureInputRowPlayersOnly(
+                        label: UIStrings.Game.brelan,
+                        rule: game.notation.ruleBrelan,
+                        keyPath: \.brelan
+                    )
                 }
                 if game.notation.isBottomFieldEnabled(.chance) {
-                    numericRowPlayersOnly(keyPath: \.chance,
-                                          label: UIStrings.Game.chance,
-                                          validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleChance) },
-                                          displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleChance) })
+                    figureInputRowPlayersOnly(
+                        label: UIStrings.Game.chance,
+                        rule: game.notation.ruleChance,
+                        keyPath: \.chance
+                    )
                 }
                 if game.notation.isBottomFieldEnabled(.full) {
-                    numericRowPlayersOnly(keyPath: \.full,
-                                          label: UIStrings.Game.full,
-                                          validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleFull) },
-                                          displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleFull) })
+                    figureInputRowPlayersOnly(
+                        label: UIStrings.Game.full,
+                        rule: game.notation.ruleFull,
+                        keyPath: \.full
+                    )
                 }
 
                 if game.notation.isBottomFieldEnabled(.suite) {
@@ -1544,13 +1682,42 @@ struct GameDetailView: View {
         }
     }
 
-    private func rowBottom(label: String,
-                           keyPath: WritableKeyPath<Scorecard, [Int]>,
-                           validator: ((Int?) -> Int)? = nil,
-                           displayMap: ((Int) -> String)? = nil) -> some View {
+    private func rowFigure(
+        label: String,
+        rule: FigureRule,
+        keyPath: WritableKeyPath<Scorecard, [Int]>
+    ) -> some View {
         HStack(spacing: 0) {
             scoreHelpLabel(label)
-            numericRowPlayersOnly(keyPath: keyPath, label: label, validator: validator, displayMap: displayMap)
+            figureInputRowPlayersOnly(label: label, rule: rule, keyPath: keyPath)
+        }
+    }
+
+    @ViewBuilder
+    private func figureInputRowPlayersOnly(
+        label: String,
+        rule: FigureRule,
+        keyPath: WritableKeyPath<Scorecard, [Int]>
+    ) -> some View {
+        if rule.mode == .fixed {
+            pickerRowPlayersOnly(
+                allowedValues: figureAllowedValues(rule: rule, rawValues: []),
+                label: label,
+                valueToText: {
+                    figureCellLabel($0, rule: rule)
+                },
+                menuValueToText: {
+                    figureMenuLabel($0, name: label, rule: rule)
+                },
+                keyPath: keyPath
+            )
+        } else {
+            numericRowPlayersOnly(
+                keyPath: keyPath,
+                label: label,
+                validator: { ValidationEngine.sanitizeBottom($0, rule: rule) },
+                displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: rule) }
+            )
         }
     }
 
