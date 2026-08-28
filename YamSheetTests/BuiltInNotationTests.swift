@@ -53,7 +53,7 @@ final class BuiltInNotationTests: XCTestCase {
         let duplicate = original.duplicate()
 
         XCTAssertFalse(duplicate.isBuiltIn)
-        XCTAssertEqual(duplicate.name, "Standard – copie")
+        XCTAssertEqual(duplicate.name, "Standard - copie")
         XCTAssertEqual(duplicate.comment, original.comment)
         XCTAssertEqual(duplicate.visibility, original.visibility)
         XCTAssertEqual(duplicate.scorecardAppearance, original.scorecardAppearance)

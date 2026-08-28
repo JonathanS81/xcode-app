@@ -789,7 +789,7 @@ final class Notation {
 
     func duplicate(named duplicateName: String? = nil) -> Notation {
         let copy = Notation(
-            name: duplicateName ?? "\(name) — copie",
+            name: duplicateName ?? "\(name) - copie",
             comment: comment,
             tooltipUpper: tooltipUpper,
             tooltipMiddle: tooltipMiddle,
