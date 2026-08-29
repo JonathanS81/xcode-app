@@ -34,18 +34,13 @@ enum YamSheetPDFExportService {
                     : 0
 
                 writer.startPage(
-                    title: player.nickname,
+                    title: player.displayName,
                     subtitle: "Fiche joueur YamSheet · \(formatted(Date()))",
                     accentColor: readablePrintColor(for: player)
                 )
-                writer.row("Nom", player.name)
                 if let email = player.email, !email.isEmpty {
                     writer.row("Adresse e-mail", email)
                 }
-                if let emoji = player.favoriteEmoji, !emoji.isEmpty {
-                    writer.row("Emoji favori", emoji)
-                }
-
                 writer.section("Vue d’ensemble")
                 writer.metricCards([
                     ("Parties", "\(gamesPlayed)"),
@@ -390,7 +385,7 @@ enum YamSheetPDFExportService {
         _ id: UUID,
         _ playersByID: [UUID: Player]
     ) -> String {
-        playersByID[id]?.nickname ?? "Joueur inconnu"
+        playersByID[id]?.displayName ?? "Joueur inconnu"
     }
 
     private static func makePDF(
@@ -456,7 +451,7 @@ enum YamSheetPDFExportService {
     }
 
     private static func playerSort(_ lhs: Player, _ rhs: Player) -> Bool {
-        lhs.nickname.localizedCaseInsensitiveCompare(rhs.nickname)
+        lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
             == .orderedAscending
     }
 

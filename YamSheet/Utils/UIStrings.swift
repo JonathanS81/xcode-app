@@ -172,6 +172,5 @@ enum UIStrings {
         static let name      = "Nom"
         static let surname      = "Surnom"
         static let email      = "Email"
-        static let invite      = "Invité"
     }
 }

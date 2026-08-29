@@ -78,13 +78,30 @@ final class Player {
 
 // MARK: - UI Helpers
 extension Player {
+    /// Nom unique affiché dans toute l'application.
+    /// `nickname` devient la valeur de référence, avec repli sur l'ancien
+    /// champ `name` pour les joueurs créés par les versions précédentes.
+    var displayName: String {
+        let nickname = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !nickname.isEmpty { return nickname }
+
+        let legacyName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return legacyName.isEmpty ? "Joueur" : legacyName
+    }
+
+    /// Enregistre le nom unique tout en maintenant les deux colonnes
+    /// historiques pour les exports et les anciennes versions de YamSheet.
+    func setDisplayName(_ value: String) {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        name = normalized
+        nickname = normalized
+    }
+
     var initials: String {
-        let parts = name.split(separator: " ")
+        let parts = displayName.split(separator: " ")
         let first = parts.first?.first.map(String.init) ?? ""
         let last = parts.dropFirst().first?.first.map(String.init) ?? ""
-        let nickInitial = nickname.first.map(String.init) ?? ""
-        let composed = first + last
-        return composed.isEmpty ? nickInitial : composed
+        return first + last
     }
 
     var avatarImage: UIImage? {

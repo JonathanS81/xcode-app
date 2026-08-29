@@ -65,9 +65,6 @@ struct PlayerDetailView: View {
                 if let email = player.email, !email.isEmpty {
                     HStack { Label("Email", systemImage: "envelope"); Spacer(); Text(email).textSelection(.enabled) }
                 }
-                if let emoji = player.favoriteEmoji, !emoji.isEmpty {
-                    HStack { Label("Emoji favori", systemImage: "face.smiling"); Spacer(); Text(emoji) }
-                }
                 HStack {
                     Label("Couleur", systemImage: "paintpalette")
                     Spacer()
@@ -75,7 +72,7 @@ struct PlayerDetailView: View {
                 }
             }
         }
-        .navigationTitle(player.nickname.isEmpty ? player.name : player.nickname)
+        .navigationTitle(player.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -97,8 +94,7 @@ struct PlayerDetailView: View {
             HStack(spacing: 16) {
                 AvatarView(imageData: player.avatarImageData, fallbackColor: player.color)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(player.name).font(.title3).bold()
-                    if !player.nickname.isEmpty { Text("\(player.nickname)").foregroundStyle(.secondary) }
+                    Text(player.displayName).font(.title3).bold()
                 }
                 Spacer()
             }

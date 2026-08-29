@@ -326,7 +326,7 @@ struct GameDetailView: View {
     private var activePlayerName: String {
         if let pid = game.activePlayerID,
            let p = allPlayers.first(where: { $0.id == pid }) {
-            return p.nickname
+            return p.displayName
         }
         return "—"
     }
@@ -562,7 +562,7 @@ struct GameDetailView: View {
             game.statusOrDefault = .completed
             game.endedAt = Date()
             let ranking: [(String, Int)] = orderedPlayers
-                .map { ($0.nickname, totalScore(for: $0.id)) }
+                .map { ($0.displayName, totalScore(for: $0.id)) }
                 .sorted { $0.1 > $1.1 }
 
             if scenePhase != .active {
@@ -919,7 +919,7 @@ struct GameDetailView: View {
                     .map { player in
                         EndGameSheet.Entry(
                             playerID: player.id,
-                            name: player.nickname,
+                            name: player.displayName,
                             score: totalScore(for: player.id)
                         )
                     }
@@ -930,7 +930,7 @@ struct GameDetailView: View {
                 OrderSetupSheet(
                     players: participants,
                     idFor: { $0.id },
-                    nameFor: { $0.nickname },
+                    nameFor: { $0.displayName },
                     onConfirm: { ids in
                         game.setTurnOrder(ids)
                         try? context.save()
@@ -1499,7 +1499,7 @@ struct GameDetailView: View {
 
             HStack(spacing: 0) {
                 ForEach(Array(displayPlayerIDs.enumerated()), id: \.element) { _, pid in
-                    let name = allPlayers.first(where: { $0.id == pid })?.nickname ?? "—"
+                    let name = allPlayers.first(where: { $0.id == pid })?.displayName ?? "—"
                     let baseColor = colorForPlayerID(pid)
 
                     Text(name)
@@ -2363,7 +2363,7 @@ struct GameDetailView: View {
         try? context.save()
 
         let ranking: [(String, Int)] = orderedPlayers
-            .map { ($0.nickname, totalScore(for: $0.id)) }
+            .map { ($0.displayName, totalScore(for: $0.id)) }
             .sorted { $0.1 > $1.1 }
 
         if showNotification {

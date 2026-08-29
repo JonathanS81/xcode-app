@@ -655,6 +655,46 @@ final class YamSheetBackupTests: XCTestCase {
     }
 
     @MainActor
+    func testSinglePlayerNameKeepsLegacyBackupsCompatible() throws {
+        let legacyPlayer = Player(
+            name: "Alice Martin",
+            nickname: ""
+        )
+        XCTAssertEqual(legacyPlayer.displayName, "Alice Martin")
+
+        var archive = try YamSheetBackupService.makeArchive(
+            scope: .players,
+            players: [legacyPlayer],
+            games: [],
+            notations: [],
+            settings: nil,
+            selectedPlayerIDs: [legacyPlayer.id]
+        )
+
+        XCTAssertEqual(archive.players.first?.name, "Alice Martin")
+        XCTAssertEqual(archive.players.first?.nickname, "Alice Martin")
+
+        // Simule un fichier créé par une ancienne version où le surnom était
+        // facultatif et pouvait donc être vide.
+        archive.players[0].nickname = ""
+
+        let destinationContainer = try makeContainer()
+        let destinationContext = ModelContext(destinationContainer)
+        let result = try YamSheetBackupService.importArchive(
+            archive,
+            into: destinationContext
+        )
+
+        XCTAssertEqual(result.playersAdded, 1)
+        let importedPlayer = try XCTUnwrap(
+            destinationContext.fetch(FetchDescriptor<Player>()).first
+        )
+        XCTAssertEqual(importedPlayer.displayName, "Alice Martin")
+        XCTAssertEqual(importedPlayer.name, "Alice Martin")
+        XCTAssertEqual(importedPlayer.nickname, "Alice Martin")
+    }
+
+    @MainActor
     func testStatsSeparateNotationsAndLabelPlayerRecords() throws {
         let settings = AppSettings()
         let player = Player(name: "Alice Martin", nickname: "Alice")

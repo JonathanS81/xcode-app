@@ -63,7 +63,8 @@ struct NewGameView: View {
             let lhsCount = countsByPlayerID[lhs.id, default: 0]
             let rhsCount = countsByPlayerID[rhs.id, default: 0]
             if lhsCount != rhsCount { return lhsCount > rhsCount }
-            return lhs.nickname.localizedCaseInsensitiveCompare(rhs.nickname) == .orderedAscending
+            return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
+                == .orderedAscending
         }
     }
     private var displayedPlayers: [Player] {
@@ -129,7 +130,7 @@ struct NewGameView: View {
                                     else     { selectedPlayerIDs.remove(p.id) }
                                 }
                             )) {
-                                Text(p.nickname)
+                                Text(p.displayName)
                             }
                         }
 
@@ -262,7 +263,7 @@ struct NewGameView: View {
                 OrderSetupSheet(
                     players: payload.players,
                     idFor: { $0.id },
-                    nameFor: { $0.nickname },
+                    nameFor: { $0.displayName },
                     onConfirm: { orderedIDs in
                         finalizeGame(with: orderedIDs)
                     }

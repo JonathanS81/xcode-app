@@ -21,15 +21,16 @@ struct NewPlayerView: View {
             draft: $draft,
             isEditing: false,
             onValidate: { d in
+                let displayName = d.displayName.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
                 // Création du joueur avec le nouveau modèle (couleur directe)
                 let p = Player(
-                    name: d.name.trimmingCharacters(in: .whitespacesAndNewlines),
-                    nickname: d.nickname.trimmingCharacters(in: .whitespacesAndNewlines),
+                    name: displayName,
+                    nickname: displayName,
                     email: d.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : d.email,
-                    favoriteEmoji: d.favoriteEmoji.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : d.favoriteEmoji,
                     color: d.preferredColor,
-                    avatarImageData: d.avatarImageData,
-                    isGuest: d.isGuest
+                    avatarImageData: d.avatarImageData
                 )
                 context.insert(p)
                 try? context.save()

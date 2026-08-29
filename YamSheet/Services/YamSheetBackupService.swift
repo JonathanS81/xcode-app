@@ -81,7 +81,9 @@ enum YamSheetBackupService {
             playerRecords.append(.placeholder(id: missingID))
         }
         playerRecords.sort {
-            $0.nickname.localizedCaseInsensitiveCompare($1.nickname) == .orderedAscending
+            $0.resolvedDisplayName.localizedCaseInsensitiveCompare(
+                $1.resolvedDisplayName
+            ) == .orderedAscending
         }
 
         let statistics: [YamSheetPlayerStatisticsRecord]
@@ -266,11 +268,9 @@ enum YamSheetBackupService {
             return emailMatch
         }
 
-        let importedName = normalizedIdentity(record.name)
-        let importedNickname = normalizedIdentity(record.nickname)
+        let importedDisplayName = normalizedIdentity(record.resolvedDisplayName)
         return players.first {
-            normalizedIdentity($0.name) == importedName
-                && normalizedIdentity($0.nickname) == importedNickname
+            normalizedIdentity($0.displayName) == importedDisplayName
         }
     }
 
@@ -347,7 +347,7 @@ enum YamSheetBackupService {
             let stats = statsByPlayerID[player.id]
             return YamSheetPlayerStatisticsRecord(
                 playerID: player.id,
-                displayName: player.nickname,
+                displayName: player.resolvedDisplayName,
                 gamesPlayed: stats?.gamesPlayed ?? 0,
                 wins: stats?.wins ?? 0,
                 averageScore: stats?.avgScore ?? 0,
@@ -407,10 +407,18 @@ private func notationVersionBaseName(_ name: String) -> String {
 }
 
 private extension YamSheetPlayerRecord {
+    var resolvedDisplayName: String {
+        let nickname = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !nickname.isEmpty { return nickname }
+
+        let legacyName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return legacyName.isEmpty ? "Joueur importé" : legacyName
+    }
+
     init(_ player: Player) {
         id = player.id
-        name = player.name
-        nickname = player.nickname
+        name = player.displayName
+        nickname = player.displayName
         email = player.email
         favoriteEmoji = player.favoriteEmoji
         colorData = player.colorData
@@ -446,10 +454,11 @@ private extension YamSheetPlayerRecord {
     }
 
     func makePlayer() -> Player {
+        let displayName = resolvedDisplayName
         let player = Player(
             id: id,
-            name: name,
-            nickname: nickname,
+            name: displayName,
+            nickname: displayName,
             email: email,
             favoriteEmoji: favoriteEmoji,
             avatarImageData: avatarImageData,

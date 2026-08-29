@@ -437,11 +437,7 @@ struct GamesMonthArchive: Identifiable {
 
 enum GamesListFormatting {
     static func displayName(for player: Player) -> String {
-        let nickname = player.nickname.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !nickname.isEmpty { return nickname }
-
-        let name = player.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? "Joueur" : name
+        player.displayName
     }
 
     static func participantNames(
