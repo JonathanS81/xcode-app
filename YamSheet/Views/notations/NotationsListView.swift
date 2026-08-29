@@ -27,35 +27,7 @@ struct NotationsListView: View {
                                         .foregroundStyle(.secondary)
                                 }
                             }
-                            if !n.comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                Text(n.comment)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
-                            }
-
-                            if n.visibility.upperSectionEnabled {
-                                sectionDetail(
-                                    "Haut",
-                                    "Bonus +\(n.upperBonusValue) si le total atteint \(n.upperBonusThreshold)"
-                                )
-                            }
-
-                            if n.visibility.middleSectionEnabled {
-                                sectionDetail(
-                                    "Milieu",
-                                    StatsEngine.middleTooltip(
-                                        mode: MiddleRuleMode(rawValue: n.middleModeRaw) ?? .multiplier,
-                                        threshold: n.middleBonusSumThreshold,
-                                        bonus: n.middleBonusValue,
-                                        invalidPairMode: n.middleInvalidPairMode
-                                    )
-                                )
-                            }
-
-                            if n.visibility.bottomSectionEnabled {
-                                sectionDetail("Bas", bottomSectionDetail(for: n))
-                            }
+                            NotationSummaryView(notation: n)
                         }
                     }
                     .listRowBackground(
@@ -123,13 +95,54 @@ struct NotationsListView: View {
         try? context.save()
     }
 
+}
+
+/// Résumé commun utilisé dans la liste des notations et pendant la création
+/// d'une partie afin de présenter partout les mêmes règles actives.
+struct NotationSummaryView: View {
+    let notation: Notation
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if !notation.comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(notation.comment)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            if notation.visibility.upperSectionEnabled {
+                sectionDetail(
+                    "Haut",
+                    "Bonus +\(notation.upperBonusValue) si le total atteint \(notation.upperBonusThreshold)"
+                )
+            }
+
+            if notation.visibility.middleSectionEnabled {
+                sectionDetail(
+                    "Milieu",
+                    StatsEngine.middleTooltip(
+                        mode: notation.middleMode,
+                        threshold: notation.middleBonusSumThreshold,
+                        bonus: notation.middleBonusValue,
+                        invalidPairMode: notation.middleInvalidPairMode
+                    )
+                )
+            }
+
+            if notation.visibility.bottomSectionEnabled {
+                sectionDetail("Bas", bottomSectionDetail)
+            }
+        }
+    }
+
     private func sectionDetail(_ title: String, _ detail: String) -> Text {
         (Text("\(title) : ").fontWeight(.semibold) + Text(detail))
             .font(.caption)
             .foregroundStyle(.secondary)
     }
 
-    private func bottomSectionDetail(for notation: Notation) -> String {
+    private var bottomSectionDetail: String {
         var categories: [String] = []
         if notation.visibility.brelanEnabled { categories.append("Brelan") }
         if notation.isChanceEnabled { categories.append("Chance") }

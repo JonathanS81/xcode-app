@@ -162,6 +162,11 @@ struct NewGameView: View {
                                 Text(n.name).tag(n.id as Notation.ID?)
                             }
                         }
+
+                        if let notation = selectedNotation {
+                            NotationSummaryView(notation: notation)
+                                .padding(.vertical, 2)
+                        }
                     }
                     Button {
                         isGameNameFocused = false
@@ -170,38 +175,6 @@ struct NewGameView: View {
                         Label("Créer une notation", systemImage: "plus.square.on.square")
                     }
                 }
-
-                // --- RÉCAPITULATIF DE LA NOTATION ---
-                Section("Détails de la notation") {
-                    if let notation = selectedNotation {
-                        if !notation.comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            Text(notation.comment)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-                        LabeledContent(
-                            "Chance",
-                            value: notation.visibility.isEnabled(.chance) && notation.isChanceEnabled
-                                ? "Activée"
-                                : "Désactivée"
-                        )
-                        LabeledContent(
-                            "Petite suite",
-                            value: notation.visibility.isEnabled(.petiteSuite) && notation.isSmallStraightEnabled
-                                ? "Activée"
-                                : "Désactivée"
-                        )
-                        LabeledContent(
-                            "Prime Yams supplémentaire",
-                            value: notation.visibility.isEnabled(.yams)
-                                ? notation.extraYamsBonusMode.label
-                                : "Désactivée"
-                        )
-                    }
-                }
-                .simultaneousGesture(TapGesture().onEnded {
-                    isGameNameFocused = false
-                })
 
                 Section("Commentaire de la partie") {
                     TextField("Commentaire", text: $comment)
