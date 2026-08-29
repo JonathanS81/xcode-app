@@ -164,6 +164,8 @@ struct YamSheetScorecardRecord: Codable, Hashable {
 
 struct YamSheetNotationRecord: Codable, Hashable {
     var name: String
+    /// Absent des sauvegardes V1 : le décodage reste rétrocompatible.
+    var createdAt: Date? = nil
     var comment: String? = nil
     var tooltipUpper: String?
     var tooltipMiddle: String?

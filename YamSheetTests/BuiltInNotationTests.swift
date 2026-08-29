@@ -90,6 +90,7 @@ final class BuiltInNotationTests: XCTestCase {
         let retiredClassic = Notation(name: "Yams classique")
         retiredClassic.builtInIdentifierRaw = "yamsheet.yams-classic.v1"
         let personalClassic = Notation(name: "Yams classique")
+        personalClassic.createdAt = nil
         context.insert(previousStandard)
         context.insert(retiredClassic)
         context.insert(personalClassic)
@@ -100,6 +101,10 @@ final class BuiltInNotationTests: XCTestCase {
         let notations = try context.fetch(FetchDescriptor<Notation>())
         XCTAssertEqual(notations.count, 2)
         XCTAssertTrue(notations.contains(where: { $0 === personalClassic }))
+        XCTAssertEqual(
+            personalClassic.createdAt,
+            NotationCreationDatePolicy.legacyV1
+        )
         XCTAssertEqual(previousStandard.name, "Standard")
         XCTAssertEqual(previousStandard.comment, "Notation standard du Yahtzee")
         XCTAssertFalse(previousStandard.visibility.middleSectionEnabled)

@@ -155,6 +155,20 @@ enum BuiltInNotationID: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// Dates de référence utilisées uniquement lorsque l'ancienne version ne
+/// connaissait pas encore la date réelle de création d'une notation.
+enum NotationCreationDatePolicy {
+    static let legacyV1 = Date(timeIntervalSince1970: 1_780_272_000)
+
+    static func fallback(
+        sourceAppVersion: String,
+        exportedAt: Date
+    ) -> Date {
+        let majorVersion = Int(sourceAppVersion.split(separator: ".").first ?? "")
+        return majorVersion == 1 ? legacyV1 : exportedAt
+    }
+}
+
 enum BottomScoreField: String, Codable, CaseIterable, Identifiable {
     case brelan
     case chance
@@ -411,6 +425,8 @@ final class Notation {
 
     // métadonnées
     var name: String = ""
+    /// Optionnelle pour conserver la compatibilité avec les bases antérieures.
+    var createdAt: Date? = nil
     var comment: String = ""
     var tooltipUpper: String? = nil
     var tooltipMiddle: String? = nil
@@ -694,6 +710,7 @@ final class Notation {
     
     init(
         name: String,
+        createdAt: Date? = Date(),
         comment: String = "",
         tooltipUpper: String? = nil,
         tooltipMiddle: String? = nil,
@@ -717,6 +734,7 @@ final class Notation {
         extraYamsBonusValue: Int = 0
     ) {
         self.name = name
+        self.createdAt = createdAt
         self.comment = comment
         self.tooltipUpper = tooltipUpper
         self.tooltipMiddle = tooltipMiddle

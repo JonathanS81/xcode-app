@@ -7,6 +7,13 @@ enum BuiltInNotations {
     static func installIfNeeded(in context: ModelContext) throws {
         let existing = try context.fetch(FetchDescriptor<Notation>())
 
+        // Les notations personnelles déjà présentes avant la V2 n'avaient pas
+        // encore de date de création. Elles reçoivent la référence V1 définie
+        // pour assurer un classement stable lors des futurs imports.
+        for notation in existing where notation.createdAt == nil && !notation.isBuiltIn {
+            notation.createdAt = NotationCreationDatePolicy.legacyV1
+        }
+
         // Nettoie uniquement le second modèle intégré du prototype V2.
         // Les notations personnelles portant un nom similaire ne sont jamais touchées.
         for notation in existing where retiredBuiltInIDs.contains(notation.builtInIdentifierRaw ?? "") {
