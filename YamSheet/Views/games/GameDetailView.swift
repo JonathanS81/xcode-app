@@ -58,30 +58,57 @@ struct GameDetailView: View {
         game.notation.resolvedScorecardAppearance.mode != .standard
     }
 
-    /// Adapte automatiquement le libellé du bouton à la luminosité réelle de
-    /// la couleur d’accent (par exemple noir sur le jaune du mode sombre).
+    /// L'asset YamSheet utilise un accent vert en mode clair et jaune en mode
+    /// sombre. On fixe explicitement leur contraste pour éviter que le style
+    /// automatique de la barre de navigation ne réapplique du blanc au jaune.
     private var nextPlayerButtonForeground: Color {
-        let style: UIUserInterfaceStyle = colorScheme == .dark ? .dark : .light
-        let resolved = UIColor(Color.accentColor).resolvedColor(
-            with: UITraitCollection(userInterfaceStyle: style)
-        )
-        var red: CGFloat = 0
-        var green: CGFloat = 0
-        var blue: CGFloat = 0
-        var alpha: CGFloat = 0
-
-        guard resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
-            return colorScheme == .dark ? .black : .white
-        }
-
-        let luminance = (0.2126 * red) + (0.7152 * green) + (0.0722 * blue)
-        return luminance > 0.58 ? .black : .white
+        colorScheme == .dark ? .black : .white
     }
 
-    private var nextPlayerButtonOutline: Color {
-        colorScheme == .dark
-            ? Color.white.opacity(0.82)
-            : Color.black.opacity(0.62)
+    /// Le bouton n'a besoin d'un renfort que lorsque la couleur choisie pour
+    /// la feuille est proche de la couleur d'accent de l'application.
+    private var nextPlayerButtonNeedsContrastEdge: Bool {
+        let appearance = game.notation.resolvedScorecardAppearance
+        guard appearance.mode == .color else { return false }
+
+        let traits = UITraitCollection(
+            userInterfaceStyle: colorScheme == .dark ? .dark : .light
+        )
+        let accent = UIColor(Color.accentColor).resolvedColor(with: traits)
+        let background = UIColor(appearance.color).resolvedColor(with: traits)
+
+        var accentHue: CGFloat = 0
+        var accentSaturation: CGFloat = 0
+        var accentBrightness: CGFloat = 0
+        var accentAlpha: CGFloat = 0
+        var backgroundHue: CGFloat = 0
+        var backgroundSaturation: CGFloat = 0
+        var backgroundBrightness: CGFloat = 0
+        var backgroundAlpha: CGFloat = 0
+
+        guard accent.getHue(
+            &accentHue,
+            saturation: &accentSaturation,
+            brightness: &accentBrightness,
+            alpha: &accentAlpha
+        ), background.getHue(
+            &backgroundHue,
+            saturation: &backgroundSaturation,
+            brightness: &backgroundBrightness,
+            alpha: &backgroundAlpha
+        ) else { return false }
+
+        let rawHueDistance = abs(accentHue - backgroundHue)
+        let hueDistance = min(rawHueDistance, 1 - rawHueDistance)
+        return hueDistance < 0.08
+            && accentSaturation > 0.18
+            && backgroundSaturation > 0.18
+    }
+
+    private var nextPlayerButtonContrastEdge: Color {
+        nextPlayerButtonNeedsContrastEdge
+            ? nextPlayerButtonForeground.opacity(0.48)
+            : .clear
     }
 
     /// Le fond standard suit le mode clair/sombre du téléphone : la couleur
@@ -828,8 +855,10 @@ struct GameDetailView: View {
                     } label: {
                         HStack(spacing: 7) {
                             Text("Joueur suivant")
+                                .foregroundStyle(nextPlayerButtonForeground)
                             Image(systemName: "play.fill")
                                 .font(.caption.weight(.bold))
+                                .foregroundStyle(nextPlayerButtonForeground)
                         }
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(nextPlayerButtonForeground)
@@ -841,22 +870,19 @@ struct GameDetailView: View {
                                 .fill(Color.accentColor)
                                 .overlay {
                                     Capsule(style: .continuous)
-                                        .stroke(Color.white.opacity(0.95), lineWidth: 2.4)
-                                }
-                                .overlay {
-                                    Capsule(style: .continuous)
-                                        .stroke(nextPlayerButtonOutline, lineWidth: 1.2)
+                                        .stroke(nextPlayerButtonContrastEdge, lineWidth: 1.1)
                                 }
                         }
-                        .shadow(color: Color.white.opacity(0.88), radius: 7)
-                        .shadow(color: Color.accentColor.opacity(0.82), radius: 11)
                         .shadow(
-                            color: Color.black.opacity(colorScheme == .dark ? 0.46 : 0.28),
-                            radius: 5,
-                            y: 2
+                            color: nextPlayerButtonNeedsContrastEdge
+                                ? nextPlayerButtonForeground.opacity(0.20)
+                                : .clear,
+                            radius: 3,
+                            y: 1
                         )
                     }
                     .buttonStyle(.plain)
+                    .tint(nextPlayerButtonForeground)
                     .fixedSize(horizontal: true, vertical: false)
                     .accessibilityHint("Valide le tour et passe au joueur suivant")
                 }
@@ -1042,18 +1068,29 @@ struct GameDetailView: View {
             return [0, 15, 20]
         }
     }
-    private func suiteMenuLabelFromSnapshot(_ v: Int) -> String {
-        if v == -1 { return UIStrings.Common.dash }
-        if v == 0  { return "0" }
+    private func suiteMenuOptionsFromSnapshot() -> [(label: String, value: Int)] {
         switch game.notation.suiteBigMode {
         case .singleFixed:
-            return String(v)
+            return [
+                (UIStrings.Common.dash, -1),
+                ("0", 0),
+                ("Grande suite basse (1 à 5)", game.notation.suiteBigFixed),
+                ("Grande suite haute (2 à 6)", game.notation.suiteBigFixed)
+            ]
         case .splitFixed:
-            if v == game.notation.suiteBigFixed1to5 { return "1 à 5" }
-            if v == game.notation.suiteBigFixed2to6 { return "2 à 6" }
-            return String(v)
+            return [
+                (UIStrings.Common.dash, -1),
+                ("0", 0),
+                ("Grande suite basse (1 à 5)", game.notation.suiteBigFixed1to5),
+                ("Grande suite haute (2 à 6)", game.notation.suiteBigFixed2to6)
+            ]
         @unknown default:
-            return String(v)
+            return [
+                (UIStrings.Common.dash, -1),
+                ("0", 0),
+                ("Grande suite basse (1 à 5)", 15),
+                ("Grande suite haute (2 à 6)", 20)
+            ]
         }
     }
     // Petite suite (from NotationSnapshot)
@@ -1078,6 +1115,21 @@ struct GameDetailView: View {
         }
     }
 
+    private func figureDiceRawValues(for figure: BottomScoreField) -> [Int] {
+        switch figure {
+        case .brelan:
+            return [3, 6, 9, 12, 15, 18]
+        case .carre:
+            return [4, 8, 12, 16, 20, 24]
+        case .yams:
+            return [5, 10, 15, 20, 25, 30]
+        case .chance, .full:
+            return Array(5...30)
+        case .suite, .petiteSuite:
+            return []
+        }
+    }
+
     private func figureCellLabel(_ value: Int, rule: FigureRule) -> String {
         guard value >= 0 else { return UIStrings.Common.dash }
         return ValidationEngine.displayForBottom(stored: value, rule: rule)
@@ -1095,11 +1147,13 @@ struct GameDetailView: View {
     }
 
     private func carreAllowedValuesFromSnapshot() -> [Int] {
-        figureAllowedValues(
-            rule: game.notation.ruleCarre,
-            rawValues: game.notation.ruleCarre.mode == .raw
-                ? Array(5...30)
-                : [4, 8, 12, 16, 20, 24]
+        let rule = game.notation.ruleCarre
+        let basis = rule.resolvedDiceBasis(for: .carre)
+        return figureAllowedValues(
+            rule: rule,
+            rawValues: basis == .figureDice
+                ? figureDiceRawValues(for: .carre)
+                : Array(5...30)
         )
     }
 
@@ -1167,6 +1221,7 @@ struct GameDetailView: View {
                     if game.notation.isBottomFieldEnabled(.brelan) {
                         rowFigure(
                             label: UIStrings.Game.brelan,
+                            figure: .brelan,
                             rule: game.notation.ruleBrelan,
                             keyPath: \Scorecard.brelan
                         )
@@ -1174,6 +1229,7 @@ struct GameDetailView: View {
                     if game.notation.isBottomFieldEnabled(.chance) {
                         rowFigure(
                             label: UIStrings.Game.chance,
+                            figure: .chance,
                             rule: game.notation.ruleChance,
                             keyPath: \Scorecard.chance
                         )
@@ -1181,6 +1237,7 @@ struct GameDetailView: View {
                     if game.notation.isBottomFieldEnabled(.full) {
                         rowFigure(
                             label: UIStrings.Game.full,
+                            figure: .full,
                             rule: game.notation.ruleFull,
                             keyPath: \Scorecard.full
                         )
@@ -1602,6 +1659,7 @@ struct GameDetailView: View {
                 if game.notation.isBottomFieldEnabled(.brelan) {
                     figureInputRowPlayersOnly(
                         label: UIStrings.Game.brelan,
+                        figure: .brelan,
                         rule: game.notation.ruleBrelan,
                         keyPath: \.brelan
                     )
@@ -1609,6 +1667,7 @@ struct GameDetailView: View {
                 if game.notation.isBottomFieldEnabled(.chance) {
                     figureInputRowPlayersOnly(
                         label: UIStrings.Game.chance,
+                        figure: .chance,
                         rule: game.notation.ruleChance,
                         keyPath: \.chance
                     )
@@ -1616,6 +1675,7 @@ struct GameDetailView: View {
                 if game.notation.isBottomFieldEnabled(.full) {
                     figureInputRowPlayersOnly(
                         label: UIStrings.Game.full,
+                        figure: .full,
                         rule: game.notation.ruleFull,
                         keyPath: \.full
                     )
@@ -1702,24 +1762,34 @@ struct GameDetailView: View {
 
     private func rowFigure(
         label: String,
+        figure: BottomScoreField,
         rule: FigureRule,
         keyPath: WritableKeyPath<Scorecard, [Int]>
     ) -> some View {
         HStack(spacing: 0) {
             scoreHelpLabel(label)
-            figureInputRowPlayersOnly(label: label, rule: rule, keyPath: keyPath)
+            figureInputRowPlayersOnly(
+                label: label,
+                figure: figure,
+                rule: rule,
+                keyPath: keyPath
+            )
         }
     }
 
     @ViewBuilder
     private func figureInputRowPlayersOnly(
         label: String,
+        figure: BottomScoreField,
         rule: FigureRule,
         keyPath: WritableKeyPath<Scorecard, [Int]>
     ) -> some View {
-        if rule.mode == .fixed {
+        if rule.mode == .fixed || rule.resolvedDiceBasis(for: figure) == .figureDice {
             pickerRowPlayersOnly(
-                allowedValues: figureAllowedValues(rule: rule, rawValues: []),
+                allowedValues: figureAllowedValues(
+                    rule: rule,
+                    rawValues: figureDiceRawValues(for: figure)
+                ),
                 label: label,
                 valueToText: {
                     figureCellLabel($0, rule: rule)
@@ -1727,6 +1797,7 @@ struct GameDetailView: View {
                 menuValueToText: {
                     figureMenuLabel($0, name: label, rule: rule)
                 },
+                showsRawValueBadgeWhenTransformed: true,
                 keyPath: keyPath
             )
         } else {
@@ -1854,20 +1925,29 @@ struct GameDetailView: View {
                         && displayedValue != rawText
 
                     Menu {
-                        Picker("Valeur", selection: binding) {
-                            ForEach([-1] + allowedValues, id: \.self) { v in
-                                let title: String = {
-                                    if label == UIStrings.Game.suite {
-                                        return suiteMenuLabelFromSnapshot(v)
-                                } else if label == UIStrings.Game.petiteSuite {
-                                    return petiteSuiteMenuLabelFromSnapshot(v)
-                                } else {
-                                    return menuValueToText.map { $0(v) }
-                                        ?? valueToText.map { $0(v) }
-                                        ?? (v == -1 ? UIStrings.Common.dash : String(v))
+                        if label == UIStrings.Game.suite {
+                            ForEach(
+                                Array(suiteMenuOptionsFromSnapshot().enumerated()),
+                                id: \.offset
+                            ) { _, option in
+                                Button(option.label) {
+                                    binding.wrappedValue = option.value
                                 }
-                            }()
-                                Text(title).tag(v)
+                            }
+                        } else {
+                            Picker("Valeur", selection: binding) {
+                                ForEach([-1] + allowedValues, id: \.self) { v in
+                                    let title: String = {
+                                        if label == UIStrings.Game.petiteSuite {
+                                            return petiteSuiteMenuLabelFromSnapshot(v)
+                                        } else {
+                                            return menuValueToText.map { $0(v) }
+                                                ?? valueToText.map { $0(v) }
+                                                ?? (v == -1 ? UIStrings.Common.dash : String(v))
+                                        }
+                                    }()
+                                    Text(title).tag(v)
+                                }
                             }
                         }
                     } label: {

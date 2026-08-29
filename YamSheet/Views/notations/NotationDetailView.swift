@@ -65,23 +65,63 @@ struct NotationDetailView: View {
 
 struct FigureRuleRow: View {
     let title: String
+    let figure: BottomScoreField
     @Binding var rule: FigureRule
     var onModeChanged: (() -> Void)? = nil
+
+    private struct ScoringOption: Identifiable {
+        let mode: BottomRuleMode
+        let basis: FigureDiceBasis
+
+        var id: String { "\(mode.rawValue)-\(basis.rawValue)" }
+    }
+
+    private var availableOptions: [ScoringOption] {
+        if figure == .suite || figure == .petiteSuite {
+            return [ScoringOption(mode: .fixed, basis: .fiveDice)]
+        }
+
+        let bases: [FigureDiceBasis] = figure.allowsFigureDiceBasis
+            ? [.fiveDice, .figureDice]
+            : [.fiveDice]
+        var options = [ScoringOption(mode: .fixed, basis: .fiveDice)]
+        options += bases.map { ScoringOption(mode: .raw, basis: $0) }
+        options += bases.map { ScoringOption(mode: .rawPlusFixed, basis: $0) }
+        options += bases.map { ScoringOption(mode: .rawTimes, basis: $0) }
+        return options
+    }
+
+    private var selectedOptionID: String {
+        ScoringOption(
+            mode: rule.mode,
+            basis: rule.resolvedDiceBasis(for: figure)
+        ).id
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Picker(title, selection: Binding(
-                get: { rule.mode.rawValue },
-                set: { rawValue in
-                    let newMode = BottomRuleMode(rawValue: rawValue) ?? .raw
-                    guard newMode != rule.mode else { return }
-                    rule.mode = newMode
+                get: { selectedOptionID },
+                set: { optionID in
+                    guard let option = availableOptions.first(where: { $0.id == optionID }) else {
+                        return
+                    }
+                    let oldMode = rule.mode
+                    let oldBasis = rule.resolvedDiceBasis(for: figure)
+                    guard option.mode != oldMode || option.basis != oldBasis else { return }
+                    rule.mode = option.mode
+                    rule.diceBasis = option.mode == .fixed ? nil : option.basis
                     onModeChanged?()
                 }
             )) {
-                ForEach(BottomRuleMode.allCases) { mode in
-                    Text(UIStrings.Notation.bottomLabel(mode))
-                        .tag(mode.rawValue)
+                ForEach(availableOptions) { option in
+                    Text(
+                        UIStrings.Notation.bottomLabel(
+                            option.mode,
+                            basis: option.basis
+                        )
+                    )
+                    .tag(option.id)
                 }
             }
             .pickerStyle(.menu)
@@ -108,12 +148,20 @@ struct FigureRuleRow: View {
 
         }
         .animation(.default, value: rule.mode)
+        .onAppear {
+            guard figure == .suite || figure == .petiteSuite,
+                  rule.mode != .fixed else { return }
+            rule.mode = .fixed
+            rule.diceBasis = nil
+            onModeChanged?()
+        }
     }
 }
 
 struct OptionalFigureRuleBlock: View {
     let toggleTitle: String
     let scoreTitle: String
+    let figure: BottomScoreField
     @Binding var isEnabled: Bool
     @Binding var rule: FigureRule
 
@@ -122,7 +170,7 @@ struct OptionalFigureRuleBlock: View {
             Toggle(toggleTitle, isOn: $isEnabled)
 
             if isEnabled {
-                FigureRuleRow(title: scoreTitle, rule: $rule)
+                FigureRuleRow(title: scoreTitle, figure: figure, rule: $rule)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }

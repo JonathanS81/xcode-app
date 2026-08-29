@@ -3,6 +3,79 @@ import SwiftData
 @testable import YamSheet
 
 final class BuiltInNotationTests: XCTestCase {
+    func testFigureDiceBasisKeepsLegacyRulesAndExplicitChoices() throws {
+        let legacyRaw = FigureRule(mode: .raw)
+        let legacyCarreWithPrime = FigureRule(
+            mode: .rawPlusFixed,
+            fixedValue: 40
+        )
+        let explicitFiveDiceCarre = FigureRule(
+            mode: .rawPlusFixed,
+            fixedValue: 40,
+            diceBasis: .fiveDice
+        )
+        let explicitFigureBrelan = FigureRule(
+            mode: .rawTimes,
+            multiplier: 2,
+            diceBasis: .figureDice
+        )
+
+        XCTAssertEqual(legacyRaw.resolvedDiceBasis(for: .brelan), .fiveDice)
+        XCTAssertEqual(legacyRaw.resolvedDiceBasis(for: .carre), .fiveDice)
+        XCTAssertEqual(
+            legacyCarreWithPrime.resolvedDiceBasis(for: .carre),
+            .figureDice
+        )
+        XCTAssertEqual(
+            explicitFiveDiceCarre.resolvedDiceBasis(for: .carre),
+            .fiveDice
+        )
+        XCTAssertEqual(
+            explicitFigureBrelan.resolvedDiceBasis(for: .brelan),
+            .figureDice
+        )
+
+        let legacyEncoded = try JSONEncoder().encode(legacyCarreWithPrime)
+        let legacyDecoded = try JSONDecoder().decode(
+            FigureRule.self,
+            from: legacyEncoded
+        )
+        XCTAssertNil(legacyDecoded.diceBasis)
+        XCTAssertEqual(
+            legacyDecoded.resolvedDiceBasis(for: .carre),
+            .figureDice
+        )
+
+        let encoded = try JSONEncoder().encode(explicitFigureBrelan)
+        let decoded = try JSONDecoder().decode(FigureRule.self, from: encoded)
+        XCTAssertEqual(decoded.diceBasis, .figureDice)
+    }
+
+    func testFigureHelpDescribesTheSelectedDiceBasis() {
+        let notation = Notation(
+            name: "Aides des figures",
+            ruleBrelan: FigureRule(
+                mode: .rawPlusFixed,
+                fixedValue: 10,
+                diceBasis: .figureDice
+            ),
+            ruleCarre: FigureRule(
+                mode: .rawTimes,
+                multiplier: 2,
+                diceBasis: .fiveDice
+            )
+        )
+
+        XCTAssertTrue(
+            notation.helpTextValue(for: .brelan)
+                .contains("trois dés constituant le Brelan")
+        )
+        XCTAssertTrue(
+            notation.helpTextValue(for: .carre)
+                .contains("cinq dés")
+        )
+    }
+
     func testLegacySnapshotKeepsEveryHistoricalScoreField() throws {
         let notation = Notation(name: "Ancienne notation")
         let encoded = try JSONEncoder().encode(notation.snapshot())

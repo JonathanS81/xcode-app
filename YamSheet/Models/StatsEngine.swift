@@ -181,21 +181,24 @@ struct StatsEngine {
     }
 
     static func figureTooltip(notation n: NotationSnapshot, figure: FigureKind) -> String {
-        func desc(_ r: FigureRule) -> String {
+        func desc(_ r: FigureRule, field: BottomScoreField) -> String {
+            let sum = r.resolvedDiceBasis(for: field) == .fiveDice
+                ? "Somme des 5 dés"
+                : "Somme des dés de la figure"
             switch r.mode {
-            case .raw:           return "Somme saisie."
-            case .fixed:         return "Valeur fixe : \(r.fixedValue)."
-            case .rawPlusFixed:  return "Somme saisie + prime fixe \(r.fixedValue)."
-            case .rawTimes:      return "Somme saisie × multiplicateur \(max(1, r.multiplier))."
+            case .raw:           return "\(sum)."
+            case .fixed:         return "Prime fixe : \(r.fixedValue)."
+            case .rawPlusFixed:  return "\(sum) + prime fixe \(r.fixedValue)."
+            case .rawTimes:      return "\(sum) × multiplicateur \(max(1, r.multiplier))."
             }
         }
         switch figure {
-        case .brelan:      return "Brelan — " + desc(n.ruleBrelan)
-        case .chance:      return "Chance — " + desc(n.ruleChance)
-        case .full:        return "Full — " + desc(n.ruleFull)
-        case .carre:       return "Carré — " + desc(n.ruleCarre)
+        case .brelan:      return "Brelan — " + desc(n.ruleBrelan, field: .brelan)
+        case .chance:      return "Chance — " + desc(n.ruleChance, field: .chance)
+        case .full:        return "Full — " + desc(n.ruleFull, field: .full)
+        case .carre:       return "Carré — " + desc(n.ruleCarre, field: .carre)
         case .yams:
-            let base = "Yams — " + desc(n.ruleYams)
+            let base = "Yams — " + desc(n.ruleYams, field: .yams)
             switch n.resolvedExtraYamsBonusMode {
             case .disabled:
                 return base
@@ -212,7 +215,7 @@ struct StatsEngine {
                 return "Suite (5 dés) — 1–5 : \(n.suiteBigFixed1to5) ; 2–6 : \(n.suiteBigFixed2to6)."
             }
         case .petiteSuite:
-            return "Petite suite (4 dés) — " + desc(n.rulePetiteSuite)
+            return "Petite suite (4 dés) — " + desc(n.rulePetiteSuite, field: .petiteSuite)
         }
     }
 }

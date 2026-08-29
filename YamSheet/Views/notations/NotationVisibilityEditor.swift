@@ -125,6 +125,7 @@ struct NotationConfigurationSections: View {
                 ) {
                     FigureRuleRow(
                         title: "Notation",
+                        figure: .brelan,
                         rule: $notation.ruleBrelan,
                         onModeChanged: { resetHelp(for: .brelan) }
                     )
@@ -133,6 +134,7 @@ struct NotationConfigurationSections: View {
                 bottomRule("Chance", isOn: chanceBinding, helpKey: .chance) {
                     FigureRuleRow(
                         title: "Notation",
+                        figure: .chance,
                         rule: $notation.ruleChance,
                         onModeChanged: { resetHelp(for: .chance) }
                     )
@@ -145,6 +147,7 @@ struct NotationConfigurationSections: View {
                 ) {
                     FigureRuleRow(
                         title: "Notation",
+                        figure: .full,
                         rule: $notation.ruleFull,
                         onModeChanged: { resetHelp(for: .full) }
                     )
@@ -170,6 +173,7 @@ struct NotationConfigurationSections: View {
                 ) {
                     FigureRuleRow(
                         title: "Notation",
+                        figure: .petiteSuite,
                         rule: $notation.rulePetiteSuite,
                         onModeChanged: { resetHelp(for: .petiteSuite) }
                     )
@@ -182,6 +186,7 @@ struct NotationConfigurationSections: View {
                 ) {
                     FigureRuleRow(
                         title: "Notation",
+                        figure: .carre,
                         rule: $notation.ruleCarre,
                         onModeChanged: { resetHelp(for: .carre) }
                     )
@@ -194,6 +199,7 @@ struct NotationConfigurationSections: View {
                 ) {
                     FigureRuleRow(
                         title: "Notation",
+                        figure: .yams,
                         rule: $notation.ruleYams,
                         onModeChanged: { resetHelp(for: .yams) }
                     )

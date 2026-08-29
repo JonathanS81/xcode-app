@@ -84,17 +84,32 @@ enum BottomRuleMode: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+enum FigureDiceBasis: String, Codable, Hashable {
+    case fiveDice
+    case figureDice
+}
+
 struct FigureRule: Codable, Hashable {
     var mode: BottomRuleMode
     var fixedValue: Int     // utilisé pour fixed (valeur), ou pour rawPlusFixed (prime)
     var multiplier: Int     // utilisé pour rawTimes (>=1)
     var tooltip: String?
+    /// Optionnel pour que les notations et sauvegardes antérieures à la V2
+    /// restent décodables sans migration.
+    var diceBasis: FigureDiceBasis?
     
-    init(mode: BottomRuleMode = .raw, fixedValue: Int = 0, multiplier: Int = 1, tooltip: String? = nil) {
+    init(
+        mode: BottomRuleMode = .raw,
+        fixedValue: Int = 0,
+        multiplier: Int = 1,
+        tooltip: String? = nil,
+        diceBasis: FigureDiceBasis? = nil
+    ) {
         self.mode = mode
         self.fixedValue = fixedValue
         self.multiplier = max(1, multiplier)
         self.tooltip = tooltip
+        self.diceBasis = diceBasis
     }
 }
 
@@ -102,21 +117,15 @@ private func defaultFigureHelpText(
     for key: ScoreHelpKey,
     rule: FigureRule
 ) -> String? {
-    let diceDescription: String
-    switch key {
-    case .carre:
-        diceDescription = "les quatre dés constituant le Carré"
-    case .brelan, .chance, .full, .yams:
-        diceDescription = "les cinq dés"
-    case .suite, .petiteSuite:
-        diceDescription = "les dés constituant la suite"
-    default:
-        return nil
-    }
+    guard let field = key.bottomScoreField else { return nil }
+    let basis = rule.resolvedDiceBasis(for: field)
+    let diceDescription = basis == .fiveDice
+        ? "les cinq dés"
+        : field.figureDiceDescription
 
     switch rule.mode {
     case .fixed:
-        return "La figure rapporte une valeur fixe de \(rule.fixedValue) points lorsqu’elle est réalisée."
+        return "La figure rapporte une prime fixe de \(rule.fixedValue) points lorsqu’elle est réalisée."
     case .raw:
         return "Additionnez \(diceDescription)."
     case .rawPlusFixed:
@@ -179,6 +188,36 @@ enum BottomScoreField: String, Codable, CaseIterable, Identifiable {
     case yams
 
     var id: String { rawValue }
+
+    var allowsFigureDiceBasis: Bool {
+        self == .brelan || self == .carre
+    }
+
+    var figureDiceDescription: String {
+        switch self {
+        case .brelan:
+            return "les trois dés constituant le Brelan"
+        case .carre:
+            return "les quatre dés constituant le Carré"
+        case .chance, .full, .yams:
+            return "les cinq dés"
+        case .suite, .petiteSuite:
+            return "les dés constituant la suite"
+        }
+    }
+}
+
+extension FigureRule {
+    /// Les anciens Carrés avec prime ou multiplicateur utilisaient déjà les
+    /// quatre dés de la figure. Tous les autres anciens modes utilisaient les
+    /// cinq dés : ce repli conserve donc leur comportement exact.
+    func resolvedDiceBasis(for field: BottomScoreField) -> FigureDiceBasis {
+        if let diceBasis { return diceBasis }
+        if field == .carre, mode == .rawPlusFixed || mode == .rawTimes {
+            return .figureDice
+        }
+        return .fiveDice
+    }
 }
 
 /// Organisation visible d'une notation.
@@ -252,6 +291,19 @@ enum ScoreHelpKey: String, Codable, CaseIterable, Identifiable {
     case extraYams
 
     var id: String { rawValue }
+
+    var bottomScoreField: BottomScoreField? {
+        switch self {
+        case .brelan: return .brelan
+        case .chance: return .chance
+        case .full: return .full
+        case .suite: return .suite
+        case .petiteSuite: return .petiteSuite
+        case .carre: return .carre
+        case .yams: return .yams
+        default: return nil
+        }
+    }
 }
 
 // Les règles compactées (snapshot) qu’on figera sur Game

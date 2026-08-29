@@ -143,16 +143,19 @@ enum UIStrings {
         }
 
         // Libellés des modes (section basse)
-        static let bottomLabelRaw          = "Somme des dés"
-        static let bottomLabelFixed        = "Valeur fixe"
-        static let bottomLabelRawPlusFixed = "Somme + Prime"
-        static let bottomLabelRawTimes     = "Somme × multiplicateur"
-        static func bottomLabel(_ mode: BottomRuleMode) -> String {
+        static let bottomLabelFixed = "Prime fixe"
+        static func bottomLabel(
+            _ mode: BottomRuleMode,
+            basis: FigureDiceBasis = .fiveDice
+        ) -> String {
+            let sum = basis == .fiveDice
+                ? "Somme des 5 dés"
+                : "Somme des dés de la figure"
             switch mode {
-            case .raw:          return bottomLabelRaw
+            case .raw:          return sum
             case .fixed:        return bottomLabelFixed
-            case .rawPlusFixed: return bottomLabelRawPlusFixed
-            case .rawTimes:     return bottomLabelRawTimes
+            case .rawPlusFixed: return "\(sum) + prime"
+            case .rawTimes:     return "\(sum) × multiplicateur"
             }
         }
         
