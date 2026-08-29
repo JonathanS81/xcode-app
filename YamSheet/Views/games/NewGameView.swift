@@ -16,14 +16,6 @@ private struct GameNameFieldFrameKey: PreferenceKey {
     }
 }
 
-private struct GameCommentFieldFrameKey: PreferenceKey {
-    static var defaultValue: CGRect = .null
-
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        value = nextValue()
-    }
-}
-
 struct NewGameView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
@@ -40,11 +32,9 @@ struct NewGameView: View {
     @State private var selectedNotationID: Notation.ID? = nil
     @State private var showsAllPlayers = false
     @State private var gameNameFieldFrame: CGRect = .null
-    @State private var gameCommentFieldFrame: CGRect = .null
     @FocusState private var isGameNameFocused: Bool
 
     // Options
-    @State private var comment: String = ""
     @State private var gameName: String = ""
 
     // Navigation directe vers la partie créée
@@ -202,21 +192,6 @@ struct NewGameView: View {
                     }
                 }
 
-                Section("Commentaire de la partie") {
-                    TextField("Commentaire", text: $comment)
-                        .background {
-                            GeometryReader { proxy in
-                                Color.clear.preference(
-                                    key: GameCommentFieldFrameKey.self,
-                                    value: proxy.frame(in: .named("newGameForm"))
-                                )
-                            }
-                        }
-                }
-                .simultaneousGesture(TapGesture().onEnded {
-                    isGameNameFocused = false
-                })
-
                 // --- ACTION (gros bouton plein) ---
                 Section {
                     Button {
@@ -235,9 +210,6 @@ struct NewGameView: View {
             .coordinateSpace(name: "newGameForm")
             .onPreferenceChange(GameNameFieldFrameKey.self) {
                 gameNameFieldFrame = $0
-            }
-            .onPreferenceChange(GameCommentFieldFrameKey.self) {
-                gameCommentFieldFrame = $0
             }
             .simultaneousGesture(
                 SpatialTapGesture(coordinateSpace: .named("newGameForm"))
@@ -315,8 +287,7 @@ struct NewGameView: View {
         guard isGameNameFocused else { return }
 
         let nameHitArea = gameNameFieldFrame.insetBy(dx: -12, dy: -12)
-        let commentHitArea = gameCommentFieldFrame.insetBy(dx: -12, dy: -12)
-        guard !nameHitArea.contains(location), !commentHitArea.contains(location) else {
+        guard !nameHitArea.contains(location) else {
             return
         }
 
@@ -353,7 +324,7 @@ struct NewGameView: View {
             : gameName
 
         // 4) Instancie Game
-        let game = Game(settings: appSettings, notation: snapshot, columns: 1, comment: comment)
+        let game = Game(settings: appSettings, notation: snapshot, columns: 1, comment: "")
         game.name = nameToUse
         game.enableChance = snapshot.isBottomFieldEnabled(.chance)
         game.enableSmallStraight = snapshot.isBottomFieldEnabled(.petiteSuite)

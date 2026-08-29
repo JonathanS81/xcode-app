@@ -183,7 +183,7 @@ struct GamesListView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
 
-            TextField("Partie ou joueur", text: $searchText)
+            TextField("Partie, joueur ou notation", text: $searchText)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
 
@@ -378,6 +378,10 @@ struct GamesListView: View {
             return true
         }
 
+        if game.notation.name.localizedCaseInsensitiveContains(query) {
+            return true
+        }
+
         return GamesListFormatting
             .participantNames(for: game, playersByID: playersByID)
             .contains { $0.localizedCaseInsensitiveContains(query) }
@@ -492,12 +496,31 @@ struct GameListRow: View {
                     .truncationMode(.tail)
             }
 
-            HStack {
+            HStack(spacing: 8) {
+                notationBadge
                 Spacer()
                 statusBadge
             }
         }
         .padding(.vertical, 6)
+    }
+
+    private var notationBadge: some View {
+        let rawName = game.notation.name.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        let name = rawName.isEmpty ? "Notation" : rawName
+
+        return Text(name)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(Color.accentColor)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.accentColor.opacity(0.12))
+            .clipShape(Capsule())
+            .accessibilityLabel("Notation : \(name)")
     }
 
     private var statusBadge: some View {

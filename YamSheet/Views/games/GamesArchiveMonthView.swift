@@ -57,6 +57,10 @@ struct GamesArchiveMonthView: View {
                     return true
                 }
 
+                if game.notation.name.localizedCaseInsensitiveContains(query) {
+                    return true
+                }
+
                 return GamesListFormatting
                     .participantNames(for: game, playersByID: playersByID)
                     .contains { $0.localizedCaseInsensitiveContains(query) }
@@ -110,7 +114,7 @@ struct GamesArchiveMonthView: View {
         }
         .navigationTitle(GamesListFormatting.monthTitle(for: monthStart))
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, prompt: "Partie ou joueur")
+        .searchable(text: $searchText, prompt: "Partie, joueur ou notation")
     }
 
     private func delete(
