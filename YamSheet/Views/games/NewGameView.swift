@@ -8,6 +8,22 @@ private enum CreationSheet: Identifiable {
     var id: Int { hashValue }
 }
 
+private struct GameNameFieldFrameKey: PreferenceKey {
+    static var defaultValue: CGRect = .null
+
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
+private struct GameCommentFieldFrameKey: PreferenceKey {
+    static var defaultValue: CGRect = .null
+
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
 struct NewGameView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
@@ -23,6 +39,8 @@ struct NewGameView: View {
     @State private var selectedPlayerIDs: Set<UUID> = []
     @State private var selectedNotationID: Notation.ID? = nil
     @State private var showsAllPlayers = false
+    @State private var gameNameFieldFrame: CGRect = .null
+    @State private var gameCommentFieldFrame: CGRect = .null
     @FocusState private var isGameNameFocused: Bool
 
     // Options
@@ -85,6 +103,14 @@ struct NewGameView: View {
                     )
                         .textInputAutocapitalization(.words)
                         .focused($isGameNameFocused)
+                        .background {
+                            GeometryReader { proxy in
+                                Color.clear.preference(
+                                    key: GameNameFieldFrameKey.self,
+                                    value: proxy.frame(in: .named("newGameForm"))
+                                )
+                            }
+                        }
                 } header: {
                     HStack {
                         Text("Nom de la partie")
@@ -178,6 +204,14 @@ struct NewGameView: View {
 
                 Section("Commentaire de la partie") {
                     TextField("Commentaire", text: $comment)
+                        .background {
+                            GeometryReader { proxy in
+                                Color.clear.preference(
+                                    key: GameCommentFieldFrameKey.self,
+                                    value: proxy.frame(in: .named("newGameForm"))
+                                )
+                            }
+                        }
                 }
                 .simultaneousGesture(TapGesture().onEnded {
                     isGameNameFocused = false
@@ -198,13 +232,19 @@ struct NewGameView: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
-            .background {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        isGameNameFocused = false
-                    }
+            .coordinateSpace(name: "newGameForm")
+            .onPreferenceChange(GameNameFieldFrameKey.self) {
+                gameNameFieldFrame = $0
             }
+            .onPreferenceChange(GameCommentFieldFrameKey.self) {
+                gameCommentFieldFrame = $0
+            }
+            .simultaneousGesture(
+                SpatialTapGesture(coordinateSpace: .named("newGameForm"))
+                    .onEnded { tap in
+                        dismissGameNameKeyboardIfNeeded(at: tap.location)
+                    }
+            )
             .navigationTitle("Nouvelle partie")
             .navigationDestination(item: $createdGame) { g in
                 GameDetailView(game: g)
@@ -271,6 +311,19 @@ struct NewGameView: View {
     }
 
     // MARK: - Création de la partie
+    private func dismissGameNameKeyboardIfNeeded(at location: CGPoint) {
+        guard isGameNameFocused else { return }
+
+        let nameHitArea = gameNameFieldFrame.insetBy(dx: -12, dy: -12)
+        let commentHitArea = gameCommentFieldFrame.insetBy(dx: -12, dy: -12)
+        guard !nameHitArea.contains(location), !commentHitArea.contains(location) else {
+            return
+        }
+
+        isGameNameFocused = false
+        hideKeyboard()
+    }
+
     private func createGame() {
         guard let _ = selectedNotation else { return }
         let chosenPlayers = players.filter { selectedPlayerIDs.contains($0.id) }
