@@ -16,7 +16,7 @@ struct NotationsListView: View {
     var body: some View {
         NavigationStack {
             List {
-                ForEach(notations) { n in
+                ForEach(displayedNotations) { n in
                     NavigationLink(value: n.id) {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
@@ -58,6 +58,11 @@ struct NotationsListView: View {
                             }
                         }
                     }
+                    .listRowBackground(
+                        n.builtInIdentifier == .standard
+                            ? Color.accentColor.opacity(0.10)
+                            : nil
+                    )
                     .swipeActions(edge: .leading, allowsFullSwipe: false) {
                         Button {
                             duplicate(n)
@@ -94,6 +99,22 @@ struct NotationsListView: View {
                     Text("Introuvable")
                 }
             }
+        }
+    }
+
+    /// La notation intégrée Standard reste la référence visible en tête de
+    /// liste. Les notations personnelles conservent ensuite l'ordre
+    /// alphabétique attendu par l'utilisateur.
+    private var displayedNotations: [Notation] {
+        notations.sorted { lhs, rhs in
+            let lhsIsStandard = lhs.builtInIdentifier == .standard
+            let rhsIsStandard = rhs.builtInIdentifier == .standard
+
+            if lhsIsStandard != rhsIsStandard {
+                return lhsIsStandard
+            }
+
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
         }
     }
 
