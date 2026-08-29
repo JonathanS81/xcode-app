@@ -865,6 +865,12 @@ struct GameDetailView: View {
                     if game.statusOrDefault == .inProgress {
                         Button(UIStrings.Game.pause) { pauseAndGoHome() }
                         Button(UIStrings.Game.finish) { finishNowAndGoHome() }
+                    } else if game.statusOrDefault == .paused {
+                        Button {
+                            resumePausedGame(announceResume: false)
+                        } label: {
+                            Label(UIStrings.Game.resume, systemImage: "play.fill")
+                        }
                     } else if game.statusOrDefault == .completed {
                         Button {
                             createRematch()
@@ -944,7 +950,24 @@ struct GameDetailView: View {
                     rematch: { createRematch() },
                     dismiss: { finishGameAndGoHome() }
                 )
-            }
+        }
+    }
+
+    private func resumePausedGame(announceResume: Bool) {
+        guard game.statusOrDefault == .paused else { return }
+
+        let didAdvance = consumeAutoAdvanceOnPauseFlag()
+        game.statusOrDefault = .inProgress
+        ensureTurnSnapshotInitialized()
+        try? context.save()
+
+        // Lors d'un retour au premier plan, ne pas interrompre le joueur sauf
+        // si son tour a réellement été validé pendant la mise en pause.
+        guard announceResume || didAdvance else { return }
+        alertMessage = didAdvance
+            ? "Le tour précédent a été validé. À \(activePlayerName) de jouer !"
+            : "À \(activePlayerName) de jouer !"
+        showAlert = true
     }
 
     private func handleScorecardAppear() {
@@ -955,20 +978,15 @@ struct GameDetailView: View {
         }
         ensureTurnSnapshotInitialized()
 
-        if game.statusOrDefault == .paused {
-            let didAdvance = consumeAutoAdvanceOnPauseFlag()
-            game.statusOrDefault = .inProgress
-            try? context.save()
-            alertMessage = didAdvance
-                ? "Le tour précédent a été validé. À \(activePlayerName) de jouer !"
-                : "À \(activePlayerName) de jouer !"
-            showAlert = true
-        }
+        resumePausedGame(announceResume: true)
     }
 
     private func handleScenePhaseChange(_ phase: ScenePhase) {
-        guard phase != .active else { return }
-        autoPauseIfNeeded(reason: "scenePhase=\(phase)")
+        if phase == .active {
+            resumePausedGame(announceResume: false)
+        } else {
+            autoPauseIfNeeded(reason: "scenePhase=\(phase)")
+        }
     }
 
 
