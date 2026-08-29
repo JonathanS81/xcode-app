@@ -28,14 +28,6 @@ struct NotationDetailView: View {
 
             Group {
             NotationConfigurationSections(notation: notation)
-
-            Section {
-                NotationHelpEditor(notation: notation)
-            } header: {
-                Text("Aides de la feuille de score")
-            } footer: {
-                Text("Seules les aides renseignées pourront être affichées pendant une partie.")
-            }
             }
             .disabled(notation.isBuiltIn)
 
@@ -70,72 +62,6 @@ struct NotationDetailView: View {
         }
     }
 }
-
-struct NotationHelpEditor: View {
-    @Bindable var notation: Notation
-
-    var body: some View {
-        DisclosureGroup("Section haute") {
-            helpField("Aide de la section", key: .sectionUpper)
-            helpField("As", key: .ones)
-            helpField("Deux", key: .twos)
-            helpField("Trois", key: .threes)
-            helpField("Quatre", key: .fours)
-            helpField("Cinq", key: .fives)
-            helpField("Six", key: .sixes)
-        }
-
-        DisclosureGroup("Section milieu") {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Aide de la section")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Text(notation.helpTextValue(for: .sectionMiddle))
-                    .font(.body)
-                    .foregroundStyle(.primary)
-            }
-            .padding(.vertical, 4)
-        }
-
-        DisclosureGroup("Section basse") {
-            helpField("Aide de la section", key: .sectionBottom)
-            helpField("Brelan", key: .brelan)
-            helpField("Chance", key: .chance)
-            helpField("Full", key: .full)
-            helpField("Grande suite", key: .suite)
-            helpField("Petite suite", key: .petiteSuite)
-            helpField("Carré", key: .carre)
-            helpField("Yams", key: .yams)
-            helpField("Prime Yams supplémentaire", key: .extraYams)
-        }
-    }
-
-    private func helpBinding(for key: ScoreHelpKey) -> Binding<String> {
-        Binding(
-            get: { notation.helpTextValue(for: key) },
-            set: { notation.setHelpText($0, for: key) }
-        )
-    }
-
-    private func helpField(_ title: String, key: ScoreHelpKey) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            TextField(
-                "Texte d’aide (optionnel)",
-                text: helpBinding(for: key),
-                axis: .vertical
-            )
-            .lineLimit(2...4)
-        }
-        .padding(.vertical, 4)
-    }
-}
-
-
 
 struct FigureRuleRow: View {
     let title: String

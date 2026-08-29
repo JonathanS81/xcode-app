@@ -19,14 +19,6 @@ struct NotationEditorView: View {
         NavigationStack {
             Form {
                 NotationConfigurationSections(notation: local)
-
-                Section {
-                    NotationHelpEditor(notation: local)
-                } header: {
-                    Text("Aides de la feuille de score")
-                } footer: {
-                    Text("Seules les aides renseignées pourront être affichées pendant une partie.")
-                }
             }
             .scrollDismissesKeyboard(.interactively)
 

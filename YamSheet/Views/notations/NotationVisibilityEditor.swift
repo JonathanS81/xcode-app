@@ -31,6 +31,16 @@ struct NotationConfigurationSections: View {
                     value: $notation.upperBonusValue,
                     range: 0...200
                 )
+
+                DisclosureGroup("Aides") {
+                    helpField("Aide générale de la section", key: .sectionUpper)
+                    helpField("As", key: .ones)
+                    helpField("Deux", key: .twos)
+                    helpField("Trois", key: .threes)
+                    helpField("Quatre", key: .fours)
+                    helpField("Cinq", key: .fives)
+                    helpField("Six", key: .sixes)
+                }
             } else {
                 disabledSectionLabel
             }
@@ -84,6 +94,18 @@ struct NotationConfigurationSections: View {
                         }
                     }
                 }
+
+                DisclosureGroup("Aide") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Aide affichée sur la feuille de score")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Text(notation.helpTextValue(for: .sectionMiddle))
+                            .foregroundStyle(.primary)
+                    }
+                    .padding(.vertical, 4)
+                }
             } else {
                 disabledSectionLabel
             }
@@ -96,7 +118,11 @@ struct NotationConfigurationSections: View {
 
         Section {
             if notation.visibility.bottomSectionEnabled {
-                bottomRule("Brelan", isOn: visibilityBinding(\.brelanEnabled)) {
+                bottomRule(
+                    "Brelan",
+                    isOn: visibilityBinding(\.brelanEnabled),
+                    helpKey: .brelan
+                ) {
                     FigureRuleRow(
                         title: "Notation",
                         rule: $notation.ruleBrelan,
@@ -104,7 +130,7 @@ struct NotationConfigurationSections: View {
                     )
                 }
 
-                bottomRule("Chance", isOn: chanceBinding) {
+                bottomRule("Chance", isOn: chanceBinding, helpKey: .chance) {
                     FigureRuleRow(
                         title: "Notation",
                         rule: $notation.ruleChance,
@@ -112,7 +138,11 @@ struct NotationConfigurationSections: View {
                     )
                 }
 
-                bottomRule("Full", isOn: visibilityBinding(\.fullEnabled)) {
+                bottomRule(
+                    "Full",
+                    isOn: visibilityBinding(\.fullEnabled),
+                    helpKey: .full
+                ) {
                     FigureRuleRow(
                         title: "Notation",
                         rule: $notation.ruleFull,
@@ -120,7 +150,11 @@ struct NotationConfigurationSections: View {
                     )
                 }
 
-                bottomRule("Grande suite", isOn: visibilityBinding(\.suiteEnabled)) {
+                bottomRule(
+                    "Grande suite",
+                    isOn: visibilityBinding(\.suiteEnabled),
+                    helpKey: .suite
+                ) {
                     BigSuiteRuleBlock(
                         modeRaw: $notation.suiteBigModeRaw,
                         singleValue: $notation.suiteBigFixed,
@@ -129,7 +163,11 @@ struct NotationConfigurationSections: View {
                     )
                 }
 
-                bottomRule("Petite suite", isOn: smallStraightBinding) {
+                bottomRule(
+                    "Petite suite",
+                    isOn: smallStraightBinding,
+                    helpKey: .petiteSuite
+                ) {
                     FigureRuleRow(
                         title: "Notation",
                         rule: $notation.rulePetiteSuite,
@@ -137,7 +175,11 @@ struct NotationConfigurationSections: View {
                     )
                 }
 
-                bottomRule("Carré", isOn: visibilityBinding(\.carreEnabled)) {
+                bottomRule(
+                    "Carré",
+                    isOn: visibilityBinding(\.carreEnabled),
+                    helpKey: .carre
+                ) {
                     FigureRuleRow(
                         title: "Notation",
                         rule: $notation.ruleCarre,
@@ -145,7 +187,11 @@ struct NotationConfigurationSections: View {
                     )
                 }
 
-                bottomRule("Yams", isOn: visibilityBinding(\.yamsEnabled)) {
+                bottomRule(
+                    "Yams",
+                    isOn: visibilityBinding(\.yamsEnabled),
+                    helpKey: .yams
+                ) {
                     FigureRuleRow(
                         title: "Notation",
                         rule: $notation.ruleYams,
@@ -158,6 +204,14 @@ struct NotationConfigurationSections: View {
                         ),
                         value: $notation.extraYamsBonusValue
                     )
+
+                    if notation.extraYamsBonusMode != .disabled {
+                        helpField("Prime Yams supplémentaire", key: .extraYams)
+                    }
+                }
+
+                DisclosureGroup("Aide générale") {
+                    helpField("Aide de la section basse", key: .sectionBottom)
                 }
             } else {
                 disabledSectionLabel
@@ -192,10 +246,34 @@ struct NotationConfigurationSections: View {
         notation.setHelpText("", for: key)
     }
 
+    private func helpBinding(for key: ScoreHelpKey) -> Binding<String> {
+        Binding(
+            get: { notation.helpTextValue(for: key) },
+            set: { notation.setHelpText($0, for: key) }
+        )
+    }
+
+    private func helpField(_ title: String, key: ScoreHelpKey) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            TextField(
+                "Texte d’aide (optionnel)",
+                text: helpBinding(for: key),
+                axis: .vertical
+            )
+            .lineLimit(2...4)
+        }
+        .padding(.vertical, 4)
+    }
+
     @ViewBuilder
     private func bottomRule<Content: View>(
         _ title: String,
         isOn: Binding<Bool>,
+        helpKey: ScoreHelpKey,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -203,6 +281,9 @@ struct NotationConfigurationSections: View {
 
             if isOn.wrappedValue {
                 content()
+                    .padding(.leading, 4)
+
+                helpField("Aide", key: helpKey)
                     .padding(.leading, 4)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
