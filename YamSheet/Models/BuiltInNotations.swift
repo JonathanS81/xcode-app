@@ -42,7 +42,9 @@ enum BuiltInNotations {
     private static func configureStandard(_ notation: Notation) {
         notation.name = "Standard"
         notation.comment = "Notation standard du Yahtzee"
-        notation.tooltipUpper = "Additionnez uniquement les dés correspondant à la ligne. Un total d’au moins 63 points rapporte un bonus de 35 points."
+        // Les aides de la section haute sont calculées à partir du seuil et du
+        // bonus afin de rester exactes si une copie de Standard est modifiée.
+        notation.tooltipUpper = nil
         notation.tooltipMiddle = "La notation standard n’utilise pas de section Max / Min."
         notation.tooltipBottom = "Chaque combinaison peut être inscrite une seule fois. Si elle n’est pas réalisée, inscrivez 0."
         notation.upperBonusThreshold = 63
@@ -64,13 +66,6 @@ enum BuiltInNotations {
         notation.suiteBigFixed = 40
         notation.extraYamsBonusMode = .multiple
         notation.scoreHelpTexts = [
-            ScoreHelpKey.sectionUpper.rawValue: "Additionnez uniquement les dés correspondant à la ligne. À partir de 63 points, ajoutez le bonus de 35 points.",
-            ScoreHelpKey.ones.rawValue: "Additionnez tous les dés affichant 1.",
-            ScoreHelpKey.twos.rawValue: "Additionnez tous les dés affichant 2.",
-            ScoreHelpKey.threes.rawValue: "Additionnez tous les dés affichant 3.",
-            ScoreHelpKey.fours.rawValue: "Additionnez tous les dés affichant 4.",
-            ScoreHelpKey.fives.rawValue: "Additionnez tous les dés affichant 5.",
-            ScoreHelpKey.sixes.rawValue: "Additionnez tous les dés affichant 6.",
             ScoreHelpKey.sectionMiddle.rawValue: "Cette section est masquée dans la notation standard.",
             ScoreHelpKey.sectionBottom.rawValue: "Réalisez la combinaison indiquée, puis saisissez son score. Une combinaison manquée vaut 0.",
             ScoreHelpKey.brelan.rawValue: "Au moins trois dés identiques. Le score correspond à la somme des cinq dés.",

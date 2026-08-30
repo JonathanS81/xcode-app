@@ -116,6 +116,71 @@ final class BuiltInNotationTests: XCTestCase {
         XCTAssertEqual(snapshot.extraYamsBonusValue, 100)
     }
 
+    func testUpperHelpUsesTheNotationThresholdAndBonus() {
+        let notation = Notation(name: "Aides dynamiques")
+        notation.upperBonusThreshold = 70
+        notation.upperBonusValue = 40
+
+        XCTAssertEqual(
+            notation.helpTextValue(for: .sectionUpper),
+            "Additionnez chaque ligne pour atteindre le seuil de 70 points. "
+                + "S’il est atteint, vous obtenez un bonus de 40 points qui s’additionne à votre total. "
+                + "Sinon, vous n’obtenez que le total."
+        )
+        XCTAssertEqual(
+            notation.helpTextValue(for: .ones),
+            "Additionnez les dés de valeur 1."
+        )
+        XCTAssertEqual(
+            notation.helpTextValue(for: .sixes),
+            "Additionnez les dés de valeur 6."
+        )
+
+        let snapshot = notation.snapshot()
+        XCTAssertEqual(
+            snapshot.helpText(for: .sectionUpper),
+            notation.helpTextValue(for: .sectionUpper)
+        )
+        XCTAssertEqual(
+            snapshot.helpText(for: .threes),
+            "Additionnez les dés de valeur 3."
+        )
+    }
+
+    func testCustomUpperHelpOverridesTheDefault() {
+        let notation = Notation(name: "Aide personnalisée")
+        notation.setHelpText("Mon aide générale", for: .sectionUpper)
+        notation.setHelpText("Mon aide pour les cinq", for: .fives)
+
+        XCTAssertEqual(
+            notation.helpTextValue(for: .sectionUpper),
+            "Mon aide générale"
+        )
+        XCTAssertEqual(
+            notation.helpTextValue(for: .fives),
+            "Mon aide pour les cinq"
+        )
+    }
+
+    func testLegacyGeneratedUpperHelpBecomesDynamic() {
+        let notation = Notation(name: "Ancienne aide Standard")
+        let legacyHelp = "Additionnez uniquement les dés correspondant à la ligne. "
+            + "À partir de 63 points, ajoutez le bonus de 35 points."
+        notation.tooltipUpper = legacyHelp
+        notation.scoreHelpTexts = [
+            ScoreHelpKey.sectionUpper.rawValue: legacyHelp
+        ]
+        notation.upperBonusThreshold = 66
+        notation.upperBonusValue = 37
+
+        let expected = "Additionnez chaque ligne pour atteindre le seuil de 66 points. "
+            + "S’il est atteint, vous obtenez un bonus de 37 points qui s’additionne à votre total. "
+            + "Sinon, vous n’obtenez que le total."
+
+        XCTAssertEqual(notation.helpTextValue(for: .sectionUpper), expected)
+        XCTAssertEqual(notation.snapshot().helpText(for: .sectionUpper), expected)
+    }
+
     func testDuplicateBecomesEditableAndKeepsHelpAndVisibility() {
         let original = BuiltInNotations.make(.standard)
         original.scorecardAppearance = ScorecardAppearance(

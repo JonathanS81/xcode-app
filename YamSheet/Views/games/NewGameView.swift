@@ -8,14 +8,6 @@ private enum CreationSheet: Identifiable {
     var id: Int { hashValue }
 }
 
-private struct GameNameFieldFrameKey: PreferenceKey {
-    static var defaultValue: CGRect = .null
-
-    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        value = nextValue()
-    }
-}
-
 struct NewGameView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
@@ -31,7 +23,6 @@ struct NewGameView: View {
     @State private var selectedPlayerIDs: Set<UUID> = []
     @State private var selectedNotationID: Notation.ID? = nil
     @State private var showsAllPlayers = false
-    @State private var gameNameFieldFrame: CGRect = .null
     @FocusState private var isGameNameFocused: Bool
 
     // Options
@@ -48,8 +39,23 @@ struct NewGameView: View {
     @State private var activeSheet: CreationSheet?
 
     // Helpers
+    private var displayedNotations: [Notation] {
+        notations.sorted { lhs, rhs in
+            let lhsIsStandard = lhs.builtInIdentifier == .standard
+            let rhsIsStandard = rhs.builtInIdentifier == .standard
+
+            if lhsIsStandard != rhsIsStandard {
+                return lhsIsStandard
+            }
+
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+                == .orderedAscending
+        }
+    }
+
     private var selectedNotation: Notation? {
-        notations.first(where: { $0.id == selectedNotationID }) ?? notations.first
+        displayedNotations.first(where: { $0.id == selectedNotationID })
+            ?? displayedNotations.first
     }
     private var playersByActivity: [Player] {
         var countsByPlayerID: [UUID: Int] = [:]
@@ -94,14 +100,6 @@ struct NewGameView: View {
                     )
                         .textInputAutocapitalization(.words)
                         .focused($isGameNameFocused)
-                        .background {
-                            GeometryReader { proxy in
-                                Color.clear.preference(
-                                    key: GameNameFieldFrameKey.self,
-                                    value: proxy.frame(in: .named("newGameForm"))
-                                )
-                            }
-                        }
                 } header: {
                     HStack {
                         Text("Nom de la partie")
@@ -169,13 +167,13 @@ struct NewGameView: View {
                         Text("Aucune notation. Créez-en une.").foregroundStyle(.secondary)
                     } else {
                         Picker("Choisir une notation", selection: Binding(
-                            get: { selectedNotationID ?? notations.first?.id },
+                            get: { selectedNotationID ?? displayedNotations.first?.id },
                             set: {
                                 isGameNameFocused = false
                                 selectedNotationID = $0
                             }
                         )) {
-                            ForEach(notations) { n in
+                            ForEach(displayedNotations) { n in
                                 Text(n.name).tag(n.id as Notation.ID?)
                             }
                         }
@@ -208,16 +206,7 @@ struct NewGameView: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
-            .coordinateSpace(name: "newGameForm")
-            .onPreferenceChange(GameNameFieldFrameKey.self) {
-                gameNameFieldFrame = $0
-            }
-            .simultaneousGesture(
-                SpatialTapGesture(coordinateSpace: .named("newGameForm"))
-                    .onEnded { tap in
-                        dismissGameNameKeyboardIfNeeded(at: tap.location)
-                    }
-            )
+            .dismissKeyboardOnOutsideTap()
             .navigationTitle("Nouvelle partie")
             .navigationDestination(item: $createdGame) { g in
                 GameDetailView(game: g)
@@ -225,7 +214,15 @@ struct NewGameView: View {
             }
             .onAppear {
                 if gameName.isEmpty { gameName = defaultGameName }
-                if selectedNotationID == nil { selectedNotationID = notations.first?.id }
+                if selectedNotationID == nil {
+                    selectedNotationID = displayedNotations.first?.id
+                }
+            }
+            .onChange(of: displayedNotations.map(\.id)) { _, notationIDs in
+                if let selectedNotationID, notationIDs.contains(selectedNotationID) {
+                    return
+                }
+                selectedNotationID = notationIDs.first
             }
             // --- FEUILLE MODALE UNIQUE ---
             .sheet(item: $activeSheet) { which in
@@ -284,18 +281,6 @@ struct NewGameView: View {
     }
 
     // MARK: - Création de la partie
-    private func dismissGameNameKeyboardIfNeeded(at location: CGPoint) {
-        guard isGameNameFocused else { return }
-
-        let nameHitArea = gameNameFieldFrame.insetBy(dx: -12, dy: -12)
-        guard !nameHitArea.contains(location) else {
-            return
-        }
-
-        isGameNameFocused = false
-        hideKeyboard()
-    }
-
     private func createGame() {
         guard let _ = selectedNotation else { return }
         let chosenPlayers = players.filter { selectedPlayerIDs.contains($0.id) }
@@ -316,7 +301,7 @@ struct NewGameView: View {
         }()
 
         // 2) Récupère la notation sélectionnée (ou la première existante)
-        guard let notation = selectedNotation ?? notations.first else { return }
+        guard let notation = selectedNotation ?? displayedNotations.first else { return }
         let snapshot = notation.snapshot()
 
         // 3) Nom final

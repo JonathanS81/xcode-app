@@ -460,7 +460,10 @@ final class YamSheetBackupTests: XCTestCase {
 
         XCTAssertEqual(decoded.helpText(for: .sectionUpper), "Ancienne aide haute")
         XCTAssertEqual(decoded.helpText(for: .brelan), "Ancienne aide du brelan")
-        XCTAssertNil(decoded.helpText(for: .ones))
+        XCTAssertEqual(
+            decoded.helpText(for: .ones),
+            "Additionnez les dés de valeur 1."
+        )
     }
 
     func testLegacyNotationSnapshotDefaultsInvalidMaxMinPairToKeepSum() throws {

@@ -306,6 +306,42 @@ enum ScoreHelpKey: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+private func defaultUpperSectionHelpText(threshold: Int, bonus: Int) -> String {
+    "Additionnez chaque ligne pour atteindre le seuil de \(threshold) points. "
+        + "S’il est atteint, vous obtenez un bonus de \(bonus) points qui s’additionne à votre total. "
+        + "Sinon, vous n’obtenez que le total."
+}
+
+/// Les premières versions de la V2 enregistraient l'aide Standard comme un
+/// texte personnalisé contenant 63 et 35. Elle doit désormais être considérée
+/// comme un ancien texte généré afin de suivre les paramètres de la notation.
+private func isLegacyGeneratedUpperHelpText(_ text: String?) -> Bool {
+    let normalized = text?
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+        .lowercased() ?? ""
+    guard normalized.hasPrefix(
+        "additionnez uniquement les dés correspondant à la ligne."
+    ) else {
+        return false
+    }
+    return normalized.contains("à partir de")
+        || normalized.contains("un total d’au moins")
+}
+
+private func defaultUpperLineHelpText(for key: ScoreHelpKey) -> String? {
+    let value: Int
+    switch key {
+    case .ones: value = 1
+    case .twos: value = 2
+    case .threes: value = 3
+    case .fours: value = 4
+    case .fives: value = 5
+    case .sixes: value = 6
+    default: return nil
+    }
+    return "Additionnez les dés de valeur \(value)."
+}
+
 // Les règles compactées (snapshot) qu’on figera sur Game
 struct NotationSnapshot: Codable {
     // Nom + tooltips globaux
@@ -431,13 +467,23 @@ struct NotationSnapshot: Codable {
             )
         }
 
-        if let text = normalizedHelpText(scoreHelpTexts?[key.rawValue]) {
+        if let text = normalizedHelpText(scoreHelpTexts?[key.rawValue]),
+           key != .sectionUpper || !isLegacyGeneratedUpperHelpText(text) {
             return text
         }
 
         switch key {
         case .sectionUpper:
-            return normalizedHelpText(tooltipUpper)
+            if let tooltip = normalizedHelpText(tooltipUpper),
+               !isLegacyGeneratedUpperHelpText(tooltip) {
+                return tooltip
+            }
+            return defaultUpperSectionHelpText(
+                threshold: upperBonusThreshold,
+                bonus: upperBonusValue
+            )
+        case .ones, .twos, .threes, .fours, .fives, .sixes:
+            return defaultUpperLineHelpText(for: key)
         case .sectionBottom:
             return normalizedHelpText(tooltipBottom)
         case .brelan:
@@ -662,13 +708,23 @@ final class Notation {
             )
         }
 
-        if let text = normalizedHelpText(scoreHelpTexts[key.rawValue]) {
+        if let text = normalizedHelpText(scoreHelpTexts[key.rawValue]),
+           key != .sectionUpper || !isLegacyGeneratedUpperHelpText(text) {
             return text
         }
 
         switch key {
         case .sectionUpper:
-            return normalizedHelpText(tooltipUpper) ?? ""
+            if let tooltip = normalizedHelpText(tooltipUpper),
+               !isLegacyGeneratedUpperHelpText(tooltip) {
+                return tooltip
+            }
+            return defaultUpperSectionHelpText(
+                threshold: upperBonusThreshold,
+                bonus: upperBonusValue
+            )
+        case .ones, .twos, .threes, .fours, .fives, .sixes:
+            return defaultUpperLineHelpText(for: key) ?? ""
         case .sectionBottom:
             return normalizedHelpText(tooltipBottom) ?? ""
         case .brelan:
