@@ -356,16 +356,16 @@ Le projet cible actuellement les familles iPhone et iPad.
 - App ID et App Group vérifiés dans les droits signés de l’archive.
 - Audit du stockage : la base active reste dans le dossier Documents ; le helper App Group n’est actuellement jamais appelé.
 - Pages de confidentialité et d’assistance préparées avec l’adresse `yamsheet.contact@gmail.com`.
-- Déploiement automatique GitHub Pages préparé pour le dépôt `JonathanS81/xcode-app`.
+- Déploiement automatique GitHub Pages préparé pour le dépôt `JonathanS81/yamsheet`.
 - Build Release installé sur un iPhone 16 Pro sous iOS 26.5.2 par-dessus la version de test existante ; historique et anciennes parties conservés.
 
 ### 28 juillet 2026
 
 - Branche de préparation App Store fusionnée dans `main`.
 - Pages publiques YamSheet déployées par GitHub Pages.
-- URL principale vérifiée en HTTPS : `https://jonathans81.github.io/xcode-app/`.
-- Politique de confidentialité vérifiée en HTTPS : `https://jonathans81.github.io/xcode-app/privacy/`.
-- Page d’assistance vérifiée en HTTPS : `https://jonathans81.github.io/xcode-app/support/`.
+- URL principale vérifiée en HTTPS : `https://jonathans81.github.io/yamsheet/`.
+- Politique de confidentialité vérifiée en HTTPS : `https://jonathans81.github.io/yamsheet/privacy/`.
+- Page d’assistance vérifiée en HTTPS : `https://jonathans81.github.io/yamsheet/support/`.
 - Ancien domaine `bitcoinference.fr` détaché du site GitHub Pages du compte.
 - URL de politique de confidentialité ajoutée dans App Store Connect.
 - URL d’assistance ajoutée à la fiche française de la version 1.0.
