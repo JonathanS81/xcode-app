@@ -16,27 +16,43 @@ struct NotationsListView: View {
     var body: some View {
         NavigationStack {
             List {
-                ForEach(notations) { n in
+                ForEach(displayedNotations) { n in
                     NavigationLink(value: n.id) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(n.name).font(.headline)
-                            // Lignes d’info
-                            Text("Haut : Bonus +\(n.upperBonusValue) si ≥ \(n.upperBonusThreshold)")
-                                .font(.caption).foregroundStyle(.secondary)
-                            Text("Milieu : " + StatsEngine.middleTooltip(
-                                    mode: MiddleRuleMode(rawValue: n.middleModeRaw) ?? .multiplier,
-                                    threshold: n.middleBonusSumThreshold,
-                                    bonus: n.middleBonusValue,
-                                    invalidPairMode: n.middleInvalidPairMode))
-                                .font(.caption).foregroundStyle(.secondary)
-                            Text("Bas : tapote une figure pour son détail")
-                                .font(.caption).foregroundStyle(.secondary)
+                            HStack {
+                                Text(n.name).font(.headline)
+                                if n.isBuiltIn {
+                                    Label("Intégrée", systemImage: "lock.fill")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            NotationSummaryView(notation: n)
                         }
                     }
-                }
-                .onDelete { idx in
-                    idx.map { notations[$0] }.forEach(context.delete)
-                    try? context.save()
+                    .listRowBackground(
+                        n.builtInIdentifier == .standard
+                            ? Color.accentColor.opacity(0.10)
+                            : nil
+                    )
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        Button {
+                            duplicate(n)
+                        } label: {
+                            Label("Dupliquer", systemImage: "doc.on.doc")
+                        }
+                        .tint(.accentColor)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        if !n.isBuiltIn {
+                            Button(role: .destructive) {
+                                context.delete(n)
+                                try? context.save()
+                            } label: {
+                                Label("Supprimer", systemImage: "trash")
+                            }
+                        }
+                    }
                 }
             }
             .navigationTitle(UIStrings.Notation.tabTitle)
@@ -56,5 +72,85 @@ struct NotationsListView: View {
                 }
             }
         }
+    }
+
+    /// La notation intégrée Standard reste la référence visible en tête de
+    /// liste. Les notations personnelles conservent ensuite l'ordre
+    /// alphabétique attendu par l'utilisateur.
+    private var displayedNotations: [Notation] {
+        notations.sorted { lhs, rhs in
+            let lhsIsStandard = lhs.builtInIdentifier == .standard
+            let rhsIsStandard = rhs.builtInIdentifier == .standard
+
+            if lhsIsStandard != rhsIsStandard {
+                return lhsIsStandard
+            }
+
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+    }
+
+    private func duplicate(_ notation: Notation) {
+        context.insert(notation.duplicate())
+        try? context.save()
+    }
+
+}
+
+/// Résumé commun utilisé dans la liste des notations et pendant la création
+/// d'une partie afin de présenter partout les mêmes règles actives.
+struct NotationSummaryView: View {
+    let notation: Notation
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if !notation.comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(notation.comment)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            if notation.visibility.upperSectionEnabled {
+                sectionDetail(
+                    "Haut",
+                    "Bonus +\(notation.upperBonusValue) si le total atteint \(notation.upperBonusThreshold)"
+                )
+            }
+
+            if notation.visibility.middleSectionEnabled {
+                sectionDetail(
+                    "Milieu",
+                    StatsEngine.middleTooltip(
+                        mode: notation.middleMode,
+                        threshold: notation.middleBonusSumThreshold,
+                        bonus: notation.middleBonusValue,
+                        invalidPairMode: notation.middleInvalidPairMode
+                    )
+                )
+            }
+
+            if notation.visibility.bottomSectionEnabled {
+                sectionDetail("Bas", bottomSectionDetail)
+            }
+        }
+    }
+
+    private func sectionDetail(_ title: String, _ detail: String) -> Text {
+        (Text("\(title) : ").fontWeight(.semibold) + Text(detail))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+
+    private var bottomSectionDetail: String {
+        var categories: [String] = []
+        if notation.visibility.brelanEnabled { categories.append("Brelan") }
+        if notation.isChanceEnabled { categories.append("Chance") }
+        if notation.visibility.fullEnabled { categories.append("Full") }
+        if notation.visibility.suiteEnabled { categories.append("Grande suite") }
+        if notation.isSmallStraightEnabled { categories.append("Petite suite") }
+        if notation.visibility.carreEnabled { categories.append("Carré") }
+        if notation.visibility.yamsEnabled { categories.append("Yams") }
+        return categories.isEmpty ? "Aucune catégorie active" : categories.joined(separator: " • ")
     }
 }

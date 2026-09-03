@@ -27,6 +27,11 @@ final class YamSheetBackupTests: XCTestCase {
         notation.isChanceEnabled = false
         notation.setHelpText("Additionnez les As obtenus.", for: .ones)
         notation.setHelpText("Règles de la section haute.", for: .sectionUpper)
+        notation.scorecardAppearance = ScorecardAppearance(
+            mode: .photo,
+            imageData: Data([10, 20, 30]),
+            intensity: 0.30
+        )
         settings.showsScoreHelp = false
 
         sourceContext.insert(settings)
@@ -112,6 +117,10 @@ final class YamSheetBackupTests: XCTestCase {
         XCTAssertEqual(importedNotationOnly?.isChanceEnabled, false)
         XCTAssertEqual(importedNotationOnly?.middleInvalidPairMode, .zeroSection)
         XCTAssertEqual(
+            importedNotationOnly?.scorecardAppearance,
+            notation.scorecardAppearance
+        )
+        XCTAssertEqual(
             try notationContext.fetchCount(FetchDescriptor<Notation>()),
             1
         )
@@ -137,6 +146,10 @@ final class YamSheetBackupTests: XCTestCase {
         XCTAssertEqual(decoded.playerStatistics.first?.yamsCount, 2)
         XCTAssertEqual(decoded.playerStatistics.first?.yamsPrimesCount, 1)
         XCTAssertEqual(decoded.notations.first?.chanceEnabled, false)
+        XCTAssertEqual(
+            decoded.notations.first?.scorecardAppearance,
+            notation.scorecardAppearance
+        )
         XCTAssertEqual(
             decoded.notations.first?.scoreHelpTexts?[ScoreHelpKey.ones.rawValue],
             "Additionnez les As obtenus."
@@ -179,12 +192,20 @@ final class YamSheetBackupTests: XCTestCase {
         XCTAssertEqual(importedSettings.first?.showsScoreHelp, false)
         XCTAssertEqual(importedNotations.first?.isChanceEnabled, false)
         XCTAssertEqual(
+            importedNotations.first?.scorecardAppearance,
+            notation.scorecardAppearance
+        )
+        XCTAssertEqual(
             importedNotations.first?.helpTextValue(for: .ones),
             "Additionnez les As obtenus."
         )
         XCTAssertEqual(
             importedGames.first?.notation.helpText(for: .sectionUpper),
             "Règles de la section haute."
+        )
+        XCTAssertEqual(
+            importedGames.first?.notation.resolvedScorecardAppearance,
+            notation.scorecardAppearance
         )
 
         let secondImport = try YamSheetBackupService.importArchive(
@@ -195,6 +216,8 @@ final class YamSheetBackupTests: XCTestCase {
         XCTAssertEqual(secondImport.playersSkipped, 1)
         XCTAssertEqual(secondImport.gamesAdded, 0)
         XCTAssertEqual(secondImport.gamesSkipped, 1)
+        XCTAssertEqual(secondImport.notationsAdded, 0)
+        XCTAssertEqual(secondImport.notationsSkipped, 1)
         XCTAssertEqual(
             try destinationContext.fetchCount(FetchDescriptor<Player>()),
             1
@@ -203,6 +226,199 @@ final class YamSheetBackupTests: XCTestCase {
             try destinationContext.fetchCount(FetchDescriptor<Game>()),
             1
         )
+        XCTAssertEqual(
+            try destinationContext.fetchCount(FetchDescriptor<Notation>()),
+            1
+        )
+    }
+
+    @MainActor
+    func testLegacyNotationImportDoesNotDuplicateEquivalentLocalNotation() throws {
+        let sourceContainer = try makeContainer()
+        let sourceContext = ModelContext(sourceContainer)
+        let sourceNotation = Notation(name: "Notation historique")
+        sourceContext.insert(sourceNotation)
+        try sourceContext.save()
+
+        let archive = try YamSheetBackupService.makeArchive(
+            scope: .notations,
+            players: [],
+            games: [],
+            notations: [sourceNotation],
+            settings: nil
+        )
+        let encoded = try YamSheetBackupCoding.encode(archive)
+        var root = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+        var notationRecords = try XCTUnwrap(
+            root["notations"] as? [[String: Any]]
+        )
+        var legacyNotation = try XCTUnwrap(notationRecords.first)
+
+        // Ces champs n’existaient pas tous dans les sauvegardes antérieures.
+        // Leur absence ne doit pas transformer une notation déjà locale en
+        // nouvelle notation lors d’une restauration après mise à jour.
+        [
+            "createdAt",
+            "comment",
+            "chanceEnabled",
+            "middleInvalidPairMode",
+            "scoreHelpTexts",
+            "visibility",
+            "scorecardAppearance"
+        ].forEach { legacyNotation.removeValue(forKey: $0) }
+        notationRecords[0] = legacyNotation
+        root["notations"] = notationRecords
+
+        let legacyData = try JSONSerialization.data(withJSONObject: root)
+        let legacyArchive = try YamSheetBackupCoding.decode(legacyData)
+
+        let destinationContainer = try makeContainer()
+        let destinationContext = ModelContext(destinationContainer)
+        destinationContext.insert(Notation(name: "Notation historique"))
+        try destinationContext.save()
+
+        let result = try YamSheetBackupService.importArchive(
+            legacyArchive,
+            into: destinationContext
+        )
+
+        XCTAssertEqual(result.notationsAdded, 0)
+        XCTAssertEqual(result.notationsSkipped, 1)
+        XCTAssertEqual(
+            try destinationContext.fetchCount(FetchDescriptor<Notation>()),
+            1
+        )
+    }
+
+    @MainActor
+    func testDifferentNotationsWithSameNameAreVersionedByCreationDate() throws {
+        let sourceContainer = try makeContainer()
+        let sourceContext = ModelContext(sourceContainer)
+        let imported = Notation(
+            name: "Classique",
+            createdAt: Date(timeIntervalSince1970: 200),
+            upperBonusValue: 40
+        )
+        sourceContext.insert(imported)
+        try sourceContext.save()
+
+        let archive = try YamSheetBackupService.makeArchive(
+            scope: .notations,
+            players: [],
+            games: [],
+            notations: [imported],
+            settings: nil
+        )
+
+        let destinationContainer = try makeContainer()
+        let destinationContext = ModelContext(destinationContainer)
+        let local = Notation(
+            name: "Classique",
+            createdAt: Date(timeIntervalSince1970: 100),
+            upperBonusValue: 35
+        )
+        destinationContext.insert(local)
+        try destinationContext.save()
+
+        let result = try YamSheetBackupService.importArchive(
+            archive,
+            into: destinationContext
+        )
+        let notations = try destinationContext.fetch(FetchDescriptor<Notation>())
+        let byName = Dictionary(uniqueKeysWithValues: notations.map { ($0.name, $0) })
+
+        XCTAssertEqual(result.notationsAdded, 1)
+        XCTAssertEqual(result.notationsSkipped, 0)
+        XCTAssertEqual(notations.count, 2)
+        XCTAssertEqual(byName["Classique_V1"]?.upperBonusValue, 35)
+        XCTAssertEqual(byName["Classique_V2"]?.upperBonusValue, 40)
+
+        // Réimporter le même fichier ne doit pas fabriquer une V3.
+        let secondResult = try YamSheetBackupService.importArchive(
+            archive,
+            into: destinationContext
+        )
+        XCTAssertEqual(secondResult.notationsAdded, 0)
+        XCTAssertEqual(secondResult.notationsSkipped, 1)
+        XCTAssertEqual(
+            try destinationContext.fetchCount(FetchDescriptor<Notation>()),
+            2
+        )
+    }
+
+    @MainActor
+    func testOlderImportedNotationReceivesV1AndNewerLocalNotationReceivesV2() throws {
+        let sourceContainer = try makeContainer()
+        let sourceContext = ModelContext(sourceContainer)
+        let imported = Notation(
+            name: "Maison",
+            createdAt: Date(timeIntervalSince1970: 100),
+            upperBonusValue: 20
+        )
+        sourceContext.insert(imported)
+        try sourceContext.save()
+
+        let archive = try YamSheetBackupService.makeArchive(
+            scope: .notations,
+            players: [],
+            games: [],
+            notations: [imported],
+            settings: nil
+        )
+
+        let destinationContainer = try makeContainer()
+        let destinationContext = ModelContext(destinationContainer)
+        let local = Notation(
+            name: "Maison",
+            createdAt: Date(timeIntervalSince1970: 200),
+            upperBonusValue: 30
+        )
+        destinationContext.insert(local)
+        try destinationContext.save()
+
+        _ = try YamSheetBackupService.importArchive(
+            archive,
+            into: destinationContext
+        )
+        let notations = try destinationContext.fetch(FetchDescriptor<Notation>())
+        let byName = Dictionary(uniqueKeysWithValues: notations.map { ($0.name, $0) })
+
+        XCTAssertEqual(byName["Maison_V1"]?.upperBonusValue, 20)
+        XCTAssertEqual(byName["Maison_V2"]?.upperBonusValue, 30)
+    }
+
+    @MainActor
+    func testV1ArchiveWithoutCreationDateUsesJuneReferenceDate() throws {
+        let sourceContainer = try makeContainer()
+        let sourceContext = ModelContext(sourceContainer)
+        let sourceNotation = Notation(name: "Ancienne importée")
+        sourceContext.insert(sourceNotation)
+        try sourceContext.save()
+
+        var archive = try YamSheetBackupService.makeArchive(
+            scope: .notations,
+            players: [],
+            games: [],
+            notations: [sourceNotation],
+            settings: nil
+        )
+        archive.metadata.sourceAppVersion = "1.0.1"
+        archive.notations[0].createdAt = nil
+
+        let destinationContainer = try makeContainer()
+        let destinationContext = ModelContext(destinationContainer)
+        let result = try YamSheetBackupService.importArchive(
+            archive,
+            into: destinationContext
+        )
+        let imported = try XCTUnwrap(
+            destinationContext.fetch(FetchDescriptor<Notation>()).first
+        )
+
+        XCTAssertEqual(result.notationsAdded, 1)
+        XCTAssertEqual(imported.createdAt, NotationCreationDatePolicy.legacyV1)
     }
 
     @MainActor
@@ -244,7 +460,10 @@ final class YamSheetBackupTests: XCTestCase {
 
         XCTAssertEqual(decoded.helpText(for: .sectionUpper), "Ancienne aide haute")
         XCTAssertEqual(decoded.helpText(for: .brelan), "Ancienne aide du brelan")
-        XCTAssertNil(decoded.helpText(for: .ones))
+        XCTAssertEqual(
+            decoded.helpText(for: .ones),
+            "Additionnez les dés de valeur 1."
+        )
     }
 
     func testLegacyNotationSnapshotDefaultsInvalidMaxMinPairToKeepSum() throws {
@@ -436,6 +655,46 @@ final class YamSheetBackupTests: XCTestCase {
         } else {
             XCTFail("Le PDF de partie ne contient aucune page.")
         }
+    }
+
+    @MainActor
+    func testSinglePlayerNameKeepsLegacyBackupsCompatible() throws {
+        let legacyPlayer = Player(
+            name: "Alice Martin",
+            nickname: ""
+        )
+        XCTAssertEqual(legacyPlayer.displayName, "Alice Martin")
+
+        var archive = try YamSheetBackupService.makeArchive(
+            scope: .players,
+            players: [legacyPlayer],
+            games: [],
+            notations: [],
+            settings: nil,
+            selectedPlayerIDs: [legacyPlayer.id]
+        )
+
+        XCTAssertEqual(archive.players.first?.name, "Alice Martin")
+        XCTAssertEqual(archive.players.first?.nickname, "Alice Martin")
+
+        // Simule un fichier créé par une ancienne version où le surnom était
+        // facultatif et pouvait donc être vide.
+        archive.players[0].nickname = ""
+
+        let destinationContainer = try makeContainer()
+        let destinationContext = ModelContext(destinationContainer)
+        let result = try YamSheetBackupService.importArchive(
+            archive,
+            into: destinationContext
+        )
+
+        XCTAssertEqual(result.playersAdded, 1)
+        let importedPlayer = try XCTUnwrap(
+            destinationContext.fetch(FetchDescriptor<Player>()).first
+        )
+        XCTAssertEqual(importedPlayer.displayName, "Alice Martin")
+        XCTAssertEqual(importedPlayer.name, "Alice Martin")
+        XCTAssertEqual(importedPlayer.nickname, "Alice Martin")
     }
 
     @MainActor

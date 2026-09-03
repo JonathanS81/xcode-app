@@ -21,6 +21,41 @@ final class MiddleScoreRulesTests: XCTestCase {
         )
     }
 
+    func testMiddleValuesOutsideFiveToThirtyAreRejected() {
+        XCTAssertEqual(
+            ValidationEngine.sanitizeMiddleMax(
+                4,
+                currentMin: nil,
+                strictGreater: false
+            ),
+            -1
+        )
+        XCTAssertEqual(
+            ValidationEngine.sanitizeMiddleMax(
+                31,
+                currentMin: nil,
+                strictGreater: false
+            ),
+            -1
+        )
+        XCTAssertEqual(
+            ValidationEngine.sanitizeMiddleMin(
+                5,
+                currentMax: nil,
+                strictGreater: false
+            ),
+            5
+        )
+        XCTAssertEqual(
+            ValidationEngine.sanitizeMiddleMin(
+                30,
+                currentMax: nil,
+                strictGreater: false
+            ),
+            30
+        )
+    }
+
     func testMultiplierReturnsZeroWhenMaxIsNotGreaterThanMin() {
         XCTAssertEqual(
             StatsEngine.middleScore(

@@ -9,6 +9,7 @@ struct GamesListView: View {
     @State private var showingNewGame = false
     @State private var searchText = ""
     @State private var selectedPlayerID: UUID?
+    @State private var navigationPath: [UUID] = []
 
     enum Filter: String, CaseIterable, Identifiable {
         case active = "Actives"
@@ -105,7 +106,7 @@ struct GamesListView: View {
         let display = makeDisplaySnapshot(playersByID: playerLookup)
         let playerName = selectedPlayerName(playersByID: playerLookup)
 
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             VStack(spacing: 0) {
                 Picker("Filtre", selection: $filter) {
                     ForEach(Filter.allCases) { value in
@@ -148,6 +149,7 @@ struct GamesListView: View {
             .navigationDestination(for: UUID.self) { id in
                 if let game = games.first(where: { $0.id == id }) {
                     GameDetailView(game: game)
+                        .id(game.id)
                 } else {
                     Text("Partie introuvable")
                         .foregroundStyle(.secondary)
@@ -158,6 +160,21 @@ struct GamesListView: View {
                 DevSeed.seedIfNeeded(context)
 #endif
             }
+            .onReceive(NotificationCenter.default.publisher(for: .openGameFromList)) { notification in
+                guard let gameID = notification.object as? UUID else { return }
+
+                // Une première partie peut encore être affichée dans la feuille
+                // « Nouvelle partie ». On ferme d'abord cette feuille, puis on
+                // ouvre la revanche dans la navigation principale.
+                let navigationDelay = showingNewGame ? 0.30 : 0.05
+                showingNewGame = false
+
+                // Laisse également à SwiftData le temps de publier la nouvelle
+                // partie dans la requête avant de remplacer l'écran courant.
+                DispatchQueue.main.asyncAfter(deadline: .now() + navigationDelay) {
+                    navigationPath = [gameID]
+                }
+            }
         }
     }
 
@@ -166,7 +183,7 @@ struct GamesListView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
 
-            TextField("Partie ou joueur", text: $searchText)
+            TextField("Partie, joueur ou notation", text: $searchText)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
 
@@ -361,6 +378,10 @@ struct GamesListView: View {
             return true
         }
 
+        if game.notation.name.localizedCaseInsensitiveContains(query) {
+            return true
+        }
+
         return GamesListFormatting
             .participantNames(for: game, playersByID: playersByID)
             .contains { $0.localizedCaseInsensitiveContains(query) }
@@ -416,11 +437,7 @@ struct GamesMonthArchive: Identifiable {
 
 enum GamesListFormatting {
     static func displayName(for player: Player) -> String {
-        let nickname = player.nickname.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !nickname.isEmpty { return nickname }
-
-        let name = player.name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return name.isEmpty ? "Joueur" : name
+        player.displayName
     }
 
     static func participantNames(
@@ -475,12 +492,31 @@ struct GameListRow: View {
                     .truncationMode(.tail)
             }
 
-            HStack {
+            HStack(spacing: 8) {
+                notationBadge
                 Spacer()
                 statusBadge
             }
         }
         .padding(.vertical, 6)
+    }
+
+    private var notationBadge: some View {
+        let rawName = game.notation.name.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        let name = rawName.isEmpty ? "Notation" : rawName
+
+        return Text(name)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(Color.accentColor)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.accentColor.opacity(0.12))
+            .clipShape(Capsule())
+            .accessibilityLabel("Notation : \(name)")
     }
 
     private var statusBadge: some View {

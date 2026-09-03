@@ -19,13 +19,10 @@ struct PlayerEditorView: View {
 
     var body: some View {
         PlayerFormView(draft: $draft, isEditing: true, onValidate: { d in
-            player.name = d.name.trimmingCharacters(in: .whitespacesAndNewlines)
-            player.nickname = d.nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+            player.setDisplayName(d.displayName)
             player.email = d.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : d.email
-            player.favoriteEmoji = d.favoriteEmoji.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : d.favoriteEmoji
             player.color = d.preferredColor
             player.avatarImageData = d.avatarImageData
-            player.isGuest = d.isGuest
             try? context.save()
             dismiss()
         }, onCancel: {
@@ -34,12 +31,9 @@ struct PlayerEditorView: View {
         .navigationTitle("Modifier joueur")
         .onAppear {
             draft = PlayerFormView.Draft(
-                name: player.name,
-                nickname: player.nickname,
+                displayName: player.displayName,
                 email: player.email ?? "",
-                favoriteEmoji: player.favoriteEmoji ?? "",
                 preferredColor: player.color,
-                isGuest: player.isGuest,
                 avatarImageData: player.avatarImageData
             )
         }

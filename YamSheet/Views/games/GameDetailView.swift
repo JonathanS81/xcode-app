@@ -47,18 +47,148 @@ struct GameDetailView: View {
         return game.activePlayerID
     }
 
-    /// Teinte de fond quand on ne sait pas encore si la case est remplie
-    private func columnTint(pid: UUID) -> some ShapeStyle {
-        let base = colorForPlayerID(pid)
-        guard _activePID() == pid else { return Color(.systemGray6) }
-        return base.opacity(tintLight)
-    }
-
-    /// Teinte de fond en fonction de l’état (vide/rempli) pour la colonne active
+    /// Teinte historique utilisée lorsque la feuille conserve son fond standard.
     private func columnTint(pid: UUID, isFilled: Bool) -> some ShapeStyle {
         let base = colorForPlayerID(pid)
         guard _activePID() == pid else { return Color(.systemGray6) }
         return base.opacity(isFilled ? max(tintDark, tintLight) : tintLight)
+    }
+
+    private var usesCustomScorecardBackground: Bool {
+        game.notation.resolvedScorecardAppearance.mode != .standard
+    }
+
+    /// L'asset YamSheet utilise un accent vert en mode clair et jaune en mode
+    /// sombre. On fixe explicitement leur contraste pour éviter que le style
+    /// automatique de la barre de navigation ne réapplique du blanc au jaune.
+    private var nextPlayerButtonForeground: Color {
+        colorScheme == .dark ? .black : .white
+    }
+
+    /// Le bouton n'a besoin d'un renfort que lorsque la couleur choisie pour
+    /// la feuille est proche de la couleur d'accent de l'application.
+    private var nextPlayerButtonNeedsContrastEdge: Bool {
+        let appearance = game.notation.resolvedScorecardAppearance
+        guard appearance.mode == .color else { return false }
+
+        let traits = UITraitCollection(
+            userInterfaceStyle: colorScheme == .dark ? .dark : .light
+        )
+        let accent = UIColor(Color.accentColor).resolvedColor(with: traits)
+        let background = UIColor(appearance.color).resolvedColor(with: traits)
+
+        var accentHue: CGFloat = 0
+        var accentSaturation: CGFloat = 0
+        var accentBrightness: CGFloat = 0
+        var accentAlpha: CGFloat = 0
+        var backgroundHue: CGFloat = 0
+        var backgroundSaturation: CGFloat = 0
+        var backgroundBrightness: CGFloat = 0
+        var backgroundAlpha: CGFloat = 0
+
+        guard accent.getHue(
+            &accentHue,
+            saturation: &accentSaturation,
+            brightness: &accentBrightness,
+            alpha: &accentAlpha
+        ), background.getHue(
+            &backgroundHue,
+            saturation: &backgroundSaturation,
+            brightness: &backgroundBrightness,
+            alpha: &backgroundAlpha
+        ) else { return false }
+
+        let rawHueDistance = abs(accentHue - backgroundHue)
+        let hueDistance = min(rawHueDistance, 1 - rawHueDistance)
+        return hueDistance < 0.08
+            && accentSaturation > 0.18
+            && backgroundSaturation > 0.18
+    }
+
+    private var nextPlayerButtonContrastEdge: Color {
+        nextPlayerButtonNeedsContrastEdge
+            ? nextPlayerButtonForeground.opacity(0.48)
+            : .clear
+    }
+
+    /// Le fond standard suit le mode clair/sombre du téléphone : la couleur
+    /// primaire garantit alors un contraste naturel (sombre en mode clair,
+    /// claire en mode sombre). Sur une couleur ou une photo, le halo blanc
+    /// reste le repère le plus lisible et le plus lumineux.
+    private var activePlayerHaloColor: Color {
+        usesCustomScorecardBackground ? .white : .primary
+    }
+
+    /// Une photo peut être claire et sombre au sein de la même ligne. La
+    /// couche extérieure opposée au halo blanc garantit donc un contraste
+    /// visible sur les deux zones sans devoir analyser l'image pixel par pixel.
+    private var activePlayerHaloOuterColor: Color {
+        usesCustomScorecardBackground ? .black : .primary
+    }
+
+    private var activePlayerHaloInnerOpacity: Double {
+        usesCustomScorecardBackground ? 0.55 : 0.28
+    }
+
+    private var activePlayerHaloOuterOpacity: Double {
+        usesCustomScorecardBackground ? 0.28 : 0.12
+    }
+
+    private var activePlayerColorHaloOpacity: Double {
+        usesCustomScorecardBackground ? 0.65 : 0.45
+    }
+
+    /// Surface commune aux éléments du header lorsque la feuille utilise un
+    /// visuel personnalisé.
+    @ViewBuilder
+    private func scorecardToolbarCapsuleBackground() -> some View {
+        if usesCustomScorecardBackground {
+            Capsule(style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay {
+                    Capsule(style: .continuous)
+                        .stroke(Color.primary.opacity(0.14), lineWidth: 0.8)
+                }
+        }
+    }
+
+    /// Une couche de lecture unique englobe le titre, les actions et toute la
+    /// grille. Elle laisse le visuel personnalisé perceptible sans rupture.
+    @ViewBuilder
+    private func scorecardContentBackground() -> some View {
+        if usesCustomScorecardBackground {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 0.7)
+                }
+        }
+    }
+
+    /// Sur un fond personnalisé, une couche système opaque isole la case du fond
+    /// avant d’appliquer la couleur du joueur. Les cases restent ainsi lisibles
+    /// même lorsque la couleur ou la photo de la feuille est très présente.
+    @ViewBuilder
+    private func scoreCellBackground(pid: UUID, isFilled: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 8)
+
+        if usesCustomScorecardBackground {
+            ZStack {
+                shape.fill(Color(uiColor: .secondarySystemBackground))
+
+                if _activePID() == pid {
+                    shape.fill(
+                        colorForPlayerID(pid)
+                            .opacity(isFilled ? max(tintDark, tintLight) : tintLight)
+                    )
+                }
+
+                shape.stroke(Color.primary.opacity(0.10), lineWidth: 0.7)
+            }
+        } else {
+            shape.fill(columnTint(pid: pid, isFilled: isFilled))
+        }
     }
     
     
@@ -88,6 +218,7 @@ struct GameDetailView: View {
     @State private var turnStartExtraYamsAwardsByPlayer: [UUID: [String: [String]]] = [:]
     @State private var turnStartExtraYamsAwardedByPlayer: [UUID: [Bool]] = [:]
     @State private var currentTurnScoreKeyByPlayer: [UUID: String] = [:]
+    @State private var turnSnapshotGameID: UUID? = nil
 
     // MARK: - Columns (multi-colonnes plus tard)
     private var scoreColumnIndex: Int { 0 }
@@ -192,8 +323,8 @@ struct GameDetailView: View {
     // Hauteurs normalisées pour aligner labels (gauche) et cellules (droite)
     private let cellRowHeight: CGFloat = 36      // chaque cellule / total
     private let headerRowHeight: CGFloat = 28    // ligne "Section haute / milieu / basse"
-    private let namesHeaderHeight: CGFloat = 26  // bandeau des noms (chips de colonnes)
-    private let namesHeaderBottom: CGFloat = 2   // marge sous ce bandeau
+    private let namesHeaderHeight: CGFloat = 36  // bandeau des noms et de leur halo
+    private let namesHeaderBottom: CGFloat = 8   // laisse respirer le halo avant la section
 
 
     // MARK: - Participants & Order
@@ -222,7 +353,7 @@ struct GameDetailView: View {
     private var activePlayerName: String {
         if let pid = game.activePlayerID,
            let p = allPlayers.first(where: { $0.id == pid }) {
-            return p.nickname
+            return p.displayName
         }
         return "—"
     }
@@ -236,23 +367,9 @@ struct GameDetailView: View {
     /// nb de cases remplies (toutes sections)
     private func currentFillableCount(for playerID: UUID) -> Int {
         guard let sc = game.scorecards.first(where: { $0.playerID == playerID }) else { return 0 }
-        let i = scoreColumnIndex
-        func f(_ a: [Int]) -> Int { (i < a.count && a[i] >= 0) ? 1 : 0 }
-        var c = 0
-        // haute
-        c += f(sc.ones); c += f(sc.twos); c += f(sc.threes)
-        c += f(sc.fours); c += f(sc.fives); c += f(sc.sixes)
-        // milieu
-        c += f(sc.maxVals); c += f(sc.minVals)
-        // basse
-        c += f(sc.brelan)
-        if game.enableChance { c += f(sc.chance) }
-        c += f(sc.full)
-        c += f(sc.suite)
-        if game.enableSmallStraight { c += f(sc.petiteSuite) }
-        c += f(sc.carre)
-        c += f(sc.yams)
-        return c
+        return trackedScoreKeys.reduce(0) { count, key in
+            count + (scoreValue(for: key, in: sc) >= 0 ? 1 : 0)
+        }
     }
 
     private func ensureTurnSnapshotInitialized() {
@@ -276,16 +393,30 @@ struct GameDetailView: View {
         }
     }
 
+    /// Les instantanés d'annulation appartiennent exclusivement à une partie.
+    /// SwiftUI peut conserver l'état de la vue quand une revanche remplace
+    /// directement la partie précédente dans la navigation : on vide alors
+    /// toute la mémoire temporaire avant de capturer le nouveau tour.
+    private func resetTurnSnapshotsIfGameChanged() {
+        guard turnSnapshotGameID != game.id else { return }
+
+        turnStartFilledKeysByPlayer.removeAll()
+        turnStartScoreValuesByPlayer.removeAll()
+        turnStartDeclaredYamsByPlayer.removeAll()
+        turnStartExtraYamsSourcesByPlayer.removeAll()
+        turnStartExtraYamsAwardsByPlayer.removeAll()
+        turnStartExtraYamsAwardedByPlayer.removeAll()
+        currentTurnScoreKeyByPlayer.removeAll()
+        turnSnapshotGameID = game.id
+    }
+
     private var trackedScoreKeys: [String] {
-        var keys = [
-            "ones", "twos", "threes", "fours", "fives", "sixes",
-            "max", "min", "brelan"
-        ]
-        if game.enableChance { keys.append("chance") }
-        keys.append(contentsOf: ["full", "suite"])
-        if game.enableSmallStraight { keys.append("petiteSuite") }
-        keys.append(contentsOf: ["carre", "yams"])
-        return keys
+        // Les nouvelles parties figent explicitement les cases attendues.
+        // Les anciennes parties n'avaient pas cette liste : leur snapshot sans
+        // visibilité retombe volontairement sur toutes les cases historiques.
+        game.requiredNotationKeys.isEmpty
+            ? game.notation.requiredScoreKeys
+            : game.requiredNotationKeys
     }
 
     private func scoreSnapshot(for sc: Scorecard) -> [String: Int] {
@@ -375,28 +506,7 @@ struct GameDetailView: View {
     }
 
     private func filledScoreKeys(for sc: Scorecard) -> Set<String> {
-        let i = scoreColumnIndex
-        func filled(_ values: [Int]) -> Bool {
-            values.indices.contains(i) && values[i] >= 0
-        }
-
-        var keys: Set<String> = []
-        if filled(sc.ones) { keys.insert("ones") }
-        if filled(sc.twos) { keys.insert("twos") }
-        if filled(sc.threes) { keys.insert("threes") }
-        if filled(sc.fours) { keys.insert("fours") }
-        if filled(sc.fives) { keys.insert("fives") }
-        if filled(sc.sixes) { keys.insert("sixes") }
-        if filled(sc.maxVals) { keys.insert("max") }
-        if filled(sc.minVals) { keys.insert("min") }
-        if filled(sc.brelan) { keys.insert("brelan") }
-        if game.enableChance, filled(sc.chance) { keys.insert("chance") }
-        if filled(sc.full) { keys.insert("full") }
-        if filled(sc.suite) { keys.insert("suite") }
-        if game.enableSmallStraight, filled(sc.petiteSuite) { keys.insert("petiteSuite") }
-        if filled(sc.carre) { keys.insert("carre") }
-        if filled(sc.yams) { keys.insert("yams") }
-        return keys
+        Set(trackedScoreKeys.filter { scoreValue(for: $0, in: sc) >= 0 })
     }
 
     private var currentTurnScoreKey: String? {
@@ -446,34 +556,13 @@ struct GameDetailView: View {
     }
 
     private var requiredCellsCountPerPlayer: Int {
-        var n = 13
-        if game.enableChance { n += 1 }
-        if game.enableSmallStraight { n += 1 }
-        return n
-    }
-
-    private var canChangePlayerByTap: Bool {
-        guard game.statusOrDefault == .inProgress, let pid = game.activePlayerID else { return false }
-        let now = currentFillableCount(for: pid)
-        let start = game.lastFilledCountByPlayer[pid] ?? now
-        return (now - start) >= 1
+        trackedScoreKeys.count
     }
 
     private func requiredFilledCount(for sc: Scorecard) -> Int {
-        let i = scoreColumnIndex
-        func f(_ a: [Int]) -> Int { (i < a.count && a[i] >= 0) ? 1 : 0 }
-        var c = 0
-        c += f(sc.ones); c += f(sc.twos); c += f(sc.threes)
-        c += f(sc.fours); c += f(sc.fives); c += f(sc.sixes)
-        c += f(sc.maxVals); c += f(sc.minVals)
-        c += f(sc.brelan)
-        if game.enableChance { c += f(sc.chance) }
-        c += f(sc.full)
-        c += f(sc.suite)
-        if game.enableSmallStraight { c += f(sc.petiteSuite) }
-        c += f(sc.carre)
-        c += f(sc.yams)
-        return c
+        trackedScoreKeys.reduce(0) { count, key in
+            count + (scoreValue(for: key, in: sc) >= 0 ? 1 : 0)
+        }
     }
 
     private func isGameCompletedNow() -> Bool {
@@ -500,7 +589,7 @@ struct GameDetailView: View {
             game.statusOrDefault = .completed
             game.endedAt = Date()
             let ranking: [(String, Int)] = orderedPlayers
-                .map { ($0.nickname, totalScore(for: $0.id)) }
+                .map { ($0.displayName, totalScore(for: $0.id)) }
                 .sorted { $0.1 > $1.1 }
 
             if scenePhase != .active {
@@ -532,6 +621,96 @@ struct GameDetailView: View {
         try? context.save()
         NotificationCenter.default.post(name: .closeToGamesList, object: game.id)
         DispatchQueue.main.async { dismiss() }
+    }
+
+    /// Crée une nouvelle partie vierge à partir de la partie affichée.
+    /// La notation et l'ordre des joueurs sont conservés, mais aucun score ni
+    /// commentaire propre à l'ancienne partie n'est recopié.
+    private func nextRematchName(from originalName: String) -> String {
+        let name = originalName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return "Revanche" }
+
+        if name == "Revanche" { return "Revanche 2" }
+        if name.hasPrefix("Revanche "),
+           let number = Int(name.dropFirst("Revanche ".count)) {
+            return "Revanche \(number + 1)"
+        }
+
+        let marker = " - Revanche"
+        if let markerRange = name.range(of: marker, options: .backwards) {
+            let baseName = String(name[..<markerRange.lowerBound])
+            let suffix = String(name[markerRange.upperBound...])
+
+            if suffix.isEmpty {
+                return "\(baseName)\(marker) 2"
+            }
+            if suffix.first == " ",
+               let number = Int(suffix.dropFirst()) {
+                return "\(baseName)\(marker) \(number + 1)"
+            }
+        }
+
+        return "\(name)\(marker)"
+    }
+
+    private func createRematch() {
+        let availablePlayerIDs = Set(allPlayers.map(\.id))
+        let storedOrder = game.turnOrder.isEmpty ? game.participantIDs : game.turnOrder
+        let orderedIDs = storedOrder.filter { availablePlayerIDs.contains($0) }
+
+        guard !orderedIDs.isEmpty else {
+            alertMessage = "Impossible de créer la revanche : aucun joueur de cette partie n’est encore disponible."
+            showAlert = true
+            return
+        }
+
+        let settings: AppSettings = {
+            if let existing = appSettings.first { return existing }
+            let created = AppSettings()
+            context.insert(created)
+            return created
+        }()
+
+        let snapshot = game.notation
+        let rematch = Game(
+            settings: settings,
+            notation: snapshot,
+            columns: game.columns,
+            comment: ""
+        )
+        rematch.name = nextRematchName(from: game.name)
+        rematch.enableChance = snapshot.isBottomFieldEnabled(.chance)
+        rematch.enableSmallStraight = snapshot.isBottomFieldEnabled(.petiteSuite)
+        rematch.smallStraightScore = snapshot.rulePetiteSuite.fixedValue
+        rematch.enableExtraYamsBonus = snapshot.isBottomFieldEnabled(.yams)
+            && snapshot.resolvedExtraYamsBonusMode != .disabled
+        rematch.requiredNotationKeys = snapshot.requiredScoreKeys
+        rematch.participantIDs = orderedIDs
+
+        context.insert(rematch)
+        rematch.setTurnOrder(orderedIDs)
+
+        for playerID in orderedIDs {
+            let scorecard = Scorecard(playerID: playerID, columns: game.columns)
+            context.insert(scorecard)
+            scorecard.game = rematch
+        }
+
+        do {
+            try context.save()
+            showCongrats = false
+
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(
+                    name: .openGameFromList,
+                    object: rematch.id
+                )
+            }
+        } catch {
+            context.delete(rematch)
+            alertMessage = "La revanche n’a pas pu être créée. Réessaie dans quelques instants."
+            showAlert = true
+        }
     }
 
     private func endTurnIfExactlyOneFilledAndAdvance() -> Bool {
@@ -625,7 +804,7 @@ struct GameDetailView: View {
         return orderedPlayers.firstIndex(where: { $0.id == aid })
     }
 
-    private var statusSubtitle: String? {
+    private var statusSubtitle: String {
         switch game.statusOrDefault {
         case .inProgress: return "À \(activePlayerName) de jouer"
         case .paused:     return "Partie en pause"
@@ -637,128 +816,227 @@ struct GameDetailView: View {
         game.name.isEmpty ? UIStrings.Common.game : game.name
     }
 
-    private var navigationHeaderTitleMaxWidth: CGFloat {
-        let reservedWidth: CGFloat = canShowNextButton ? 246 : 170
-        return max(80, min(220, UIScreen.main.bounds.width - reservedWidth))
-    }
-
     @ViewBuilder
     private func modernHeader() -> some View {
-        GDV_Header(title: UIStrings.Game.title, subtitle: statusSubtitle)
-       /* GDV_PlayerChips(
-            players: orderedPlayers.map { $0.nickname },
-            activeIndex: activeIndexForChips
-        )*/
+        VStack(alignment: .leading, spacing: 4) {
+            Text(navigationHeaderTitle)
+                .font(.title3.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+                .truncationMode(.tail)
+
+            Text("Score – \(statusSubtitle)")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.80)
+        }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ToolbarContentBuilder
+    private var gameToolbar: some ToolbarContent {
+        if usesCustomScorecardBackground {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .accessibilityLabel("Retour")
+            }
+        }
+
+        ToolbarItem(placement: .navigationBarTrailing) {
+            HStack(spacing: 9) {
+                if canShowNextButton {
+                    Button {
+                        onNextPlayerTapped()
+                    } label: {
+                        HStack(spacing: 7) {
+                            Text("Joueur suivant")
+                                .foregroundStyle(nextPlayerButtonForeground)
+                            Image(systemName: "play.fill")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(nextPlayerButtonForeground)
+                        }
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(nextPlayerButtonForeground)
+                        .lineLimit(1)
+                        .padding(.horizontal, 13)
+                        .padding(.vertical, 9)
+                        .background {
+                            Capsule(style: .continuous)
+                                .fill(Color.accentColor)
+                                .overlay {
+                                    Capsule(style: .continuous)
+                                        .stroke(nextPlayerButtonContrastEdge, lineWidth: 1.1)
+                                }
+                        }
+                        .shadow(
+                            color: nextPlayerButtonNeedsContrastEdge
+                                ? nextPlayerButtonForeground.opacity(0.20)
+                                : .clear,
+                            radius: 3,
+                            y: 1
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .tint(nextPlayerButtonForeground)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .accessibilityHint("Valide le tour et passe au joueur suivant")
+                }
+
+                Menu {
+                    if game.statusOrDefault == .inProgress {
+                        Button(UIStrings.Game.pause) { pauseAndGoHome() }
+                        Button(UIStrings.Game.finish) { finishNowAndGoHome() }
+                    } else if game.statusOrDefault == .paused {
+                        Button {
+                            resumePausedGame(announceResume: false)
+                        } label: {
+                            Label(UIStrings.Game.resume, systemImage: "play.fill")
+                        }
+                    } else if game.statusOrDefault == .completed {
+                        Button {
+                            createRematch()
+                        } label: {
+                            Label("Revanche", systemImage: "arrow.counterclockwise")
+                        }
+                    } else {
+                        Text("Partie verrouillée")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .accessibilityLabel("Actions de la partie")
+            }
+            .fixedSize(horizontal: true, vertical: false)
+        }
+
+        ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            Button("Terminé") { hideKeyboard() }
+        }
+    }
+
+    private var scorecardMainContent: some View {
+        ZStack {
+            ScorecardBackgroundView(
+                appearance: game.notation.resolvedScorecardAppearance
+            )
+            .ignoresSafeArea()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    modernHeader()
+                    turnActionsControl()
+                    grid()
+                }
+                .padding(.vertical, usesCustomScorecardBackground ? 14 : 0)
+                .background {
+                    scorecardContentBackground()
+                        .padding(.horizontal, -7)
+                }
+                .padding(.horizontal)
+            }
+            .background(Color.clear)
+        }
+    }
+
+    private var scorecardWithSheets: some View {
+        scorecardMainContent
+            .sheet(isPresented: $showEndGameSheet) {
+                let entries: [EndGameSheet.Entry] = orderedPlayers
+                    .map { player in
+                        EndGameSheet.Entry(
+                            playerID: player.id,
+                            name: player.displayName,
+                            score: totalScore(for: player.id)
+                        )
+                    }
+                    .sorted { $0.score > $1.score }
+                EndGameSheet(entries: entries) { showEndGameSheet = false }
+            }
+            .sheet(isPresented: $showOrderSheet) {
+                OrderSetupSheet(
+                    players: participants,
+                    idFor: { $0.id },
+                    nameFor: { $0.displayName },
+                    onConfirm: { ids in
+                        game.setTurnOrder(ids)
+                        try? context.save()
+                    }
+                )
+            }
+            .sheet(isPresented: $showCongrats) {
+                EndGameCongratsView(
+                    gameName: game.name,
+                    entries: endGameEntries,
+                    rematch: { createRematch() },
+                    dismiss: { finishGameAndGoHome() }
+                )
+        }
+    }
+
+    private func resumePausedGame(announceResume: Bool) {
+        guard game.statusOrDefault == .paused else { return }
+
+        let didAdvance = consumeAutoAdvanceOnPauseFlag()
+        game.statusOrDefault = .inProgress
+        ensureTurnSnapshotInitialized()
+        try? context.save()
+
+        // Lors d'un retour au premier plan, ne pas interrompre le joueur sauf
+        // si son tour a réellement été validé pendant la mise en pause.
+        guard announceResume || didAdvance else { return }
+        alertMessage = didAdvance
+            ? "Le tour précédent a été validé. À \(activePlayerName) de jouer !"
+            : "À \(activePlayerName) de jouer !"
+        showAlert = true
+    }
+
+    private func handleScorecardAppear() {
+        NotificationManager.requestAuthorizationIfNeeded()
+        resetTurnSnapshotsIfGameChanged()
+        if game.turnOrder.isEmpty && orderedPlayers.count >= 2 {
+            showOrderSheet = true
+        }
+        ensureTurnSnapshotInitialized()
+
+        resumePausedGame(announceResume: true)
+    }
+
+    private func handleScenePhaseChange(_ phase: ScenePhase) {
+        if phase == .active {
+            resumePausedGame(announceResume: false)
+        } else {
+            autoPauseIfNeeded(reason: "scenePhase=\(phase)")
+        }
     }
 
 
     // MARK: - Body
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                modernHeader()
-                turnActionsControl()
-                grid()
-            }
-            .padding(.horizontal)
-        }
-        .sheet(isPresented: $showEndGameSheet) {
-            let entries: [EndGameSheet.Entry] = orderedPlayers
-                .map { p in EndGameSheet.Entry(playerID: p.id, name: p.nickname, score: totalScore(for: p.id)) }
-                .sorted { $0.score > $1.score }
-            EndGameSheet(entries: entries) { showEndGameSheet = false }
-        }
-        .sheet(isPresented: $showOrderSheet) {
-            OrderSetupSheet(
-                players: participants,
-                idFor: { $0.id },
-                nameFor: { $0.nickname },
-                onConfirm: { ids in
-                    game.setTurnOrder(ids); try? context.save()
-                }
-            )
-        }
-        .sheet(isPresented: $showCongrats) {
-            EndGameCongratsView(
-                gameName: game.name,
-                entries: endGameEntries,
-                dismiss: { finishGameAndGoHome() }
-            )
-        }
-        .onAppear {
-            NotificationManager.requestAuthorizationIfNeeded()
-            if game.turnOrder.isEmpty && orderedPlayers.count >= 2 { showOrderSheet = true }
-            ensureTurnSnapshotInitialized()
-
-            if game.statusOrDefault == .paused {
-                let didAdvance = consumeAutoAdvanceOnPauseFlag()
-                game.statusOrDefault = .inProgress
-                try? context.save()
-                alertMessage = didAdvance
-                    ? "Le tour précédent a été validé. À \(activePlayerName) de jouer !"
-                    : "À \(activePlayerName) de jouer !"
-                showAlert = true
-            }
-        }
+        scorecardWithSheets
+        .onAppear(perform: handleScorecardAppear)
         .onChange(of: game.activePlayerID) { _, _ in
             ensureTurnSnapshotInitialized()
         }
+        .onChange(of: game.id) { _, _ in
+            resetTurnSnapshotsIfGameChanged()
+            ensureTurnSnapshotInitialized()
+        }
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { autoPauseIfNeeded(reason: "scenePhase=\(phase)") }
+            handleScenePhaseChange(phase)
         }
         .onDisappear { autoPauseIfNeeded(reason: "onDisappear") }
         .scrollDismissesKeyboard(.interactively)
         .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-/*#if DEBUG
-            ToolbarItem(placement: .navigationBarLeading) {
-                Menu {
-                    Button("Debug • Terminer maintenant (popup)") {
-                        debugFillAllRequiredAndComplete(showNotification: false)
-                    }
-                    Button("Debug • Terminer avec notification") {
-                        NotificationManager.requestAuthorizationIfNeeded()
-                        debugFillAllRequiredAndComplete(showNotification: true)
-                    }
-                } label: { Image(systemName: "ladybug.fill") }
-            }
-#endif */
-            ToolbarItem(placement: .principal) {
-                Text(navigationHeaderTitle)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: navigationHeaderTitleMaxWidth)
-                    .accessibilityLabel("Partie : \(navigationHeaderTitle)")
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: 8) {
-                    if canShowNextButton {
-                        Button("Joueur suivant") { onNextPlayerTapped() }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                            .fixedSize(horizontal: true, vertical: false)
-                    }
-                    Menu {
-                        if game.statusOrDefault == .inProgress {
-                            Button(UIStrings.Game.pause)  { pauseAndGoHome() }
-                            Button(UIStrings.Game.finish) { finishNowAndGoHome() }
-                        } else {
-                            Text("Partie verrouillée")
-                        }
-                    } label: { Image(systemName: "ellipsis.circle") }
-                }
-                .fixedSize(horizontal: true, vertical: false)
-            }
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Terminé") { hideKeyboard() }
-            }
-        }
+        .navigationBarBackButtonHidden(usesCustomScorecardBackground)
+        .toolbar { gameToolbar }
         .alert(alertMessage, isPresented: $showAlert) { Button(UIStrings.Common.ok, role: .cancel) { } }
         .alert(tipTitle, isPresented: $showTip) {
             Button(UIStrings.Common.ok, role: .cancel) { }
@@ -790,18 +1068,29 @@ struct GameDetailView: View {
             return [0, 15, 20]
         }
     }
-    private func suiteMenuLabelFromSnapshot(_ v: Int) -> String {
-        if v == -1 { return UIStrings.Common.dash }
-        if v == 0  { return "0" }
+    private func suiteMenuOptionsFromSnapshot() -> [(label: String, value: Int)] {
         switch game.notation.suiteBigMode {
         case .singleFixed:
-            return String(v)
+            return [
+                (UIStrings.Common.dash, -1),
+                ("0", 0),
+                ("Grande suite basse (1 à 5)", game.notation.suiteBigFixed),
+                ("Grande suite haute (2 à 6)", game.notation.suiteBigFixed)
+            ]
         case .splitFixed:
-            if v == game.notation.suiteBigFixed1to5 { return "1 à 5" }
-            if v == game.notation.suiteBigFixed2to6 { return "2 à 6" }
-            return String(v)
+            return [
+                (UIStrings.Common.dash, -1),
+                ("0", 0),
+                ("Grande suite basse (1 à 5)", game.notation.suiteBigFixed1to5),
+                ("Grande suite haute (2 à 6)", game.notation.suiteBigFixed2to6)
+            ]
         @unknown default:
-            return String(v)
+            return [
+                (UIStrings.Common.dash, -1),
+                ("0", 0),
+                ("Grande suite basse (1 à 5)", 15),
+                ("Grande suite haute (2 à 6)", 20)
+            ]
         }
     }
     // Petite suite (from NotationSnapshot)
@@ -826,6 +1115,21 @@ struct GameDetailView: View {
         }
     }
 
+    private func figureDiceRawValues(for figure: BottomScoreField) -> [Int] {
+        switch figure {
+        case .brelan:
+            return [3, 6, 9, 12, 15, 18]
+        case .carre:
+            return [4, 8, 12, 16, 20, 24]
+        case .yams:
+            return [5, 10, 15, 20, 25, 30]
+        case .chance, .full:
+            return Array(5...30)
+        case .suite, .petiteSuite:
+            return []
+        }
+    }
+
     private func figureCellLabel(_ value: Int, rule: FigureRule) -> String {
         guard value >= 0 else { return UIStrings.Common.dash }
         return ValidationEngine.displayForBottom(stored: value, rule: rule)
@@ -843,9 +1147,13 @@ struct GameDetailView: View {
     }
 
     private func carreAllowedValuesFromSnapshot() -> [Int] {
-        figureAllowedValues(
-            rule: game.notation.ruleCarre,
-            rawValues: [4, 8, 12, 16, 20, 24]
+        let rule = game.notation.ruleCarre
+        let basis = rule.resolvedDiceBasis(for: .carre)
+        return figureAllowedValues(
+            rule: rule,
+            rawValues: basis == .figureDice
+                ? figureDiceRawValues(for: .carre)
+                : Array(5...30)
         )
     }
 
@@ -879,110 +1187,135 @@ struct GameDetailView: View {
                 }
 
                 // Section haute
-                sectionHeader(
-                    UIStrings.Game.upperSection,
-                    detail: upperSectionDetailText
-                )
-                rowUpper(label: UIStrings.Game.ones,   face: 1, keyPath: \Scorecard.ones)
-                rowUpper(label: UIStrings.Game.twos,   face: 2, keyPath: \Scorecard.twos)
-                rowUpper(label: UIStrings.Game.threes, face: 3, keyPath: \Scorecard.threes)
-                rowUpper(label: UIStrings.Game.fours,  face: 4, keyPath: \Scorecard.fours)
-                rowUpper(label: UIStrings.Game.fives,  face: 5, keyPath: \Scorecard.fives)
-                rowUpper(label: UIStrings.Game.sixes,  face: 6, keyPath: \Scorecard.sixes)
-                totalsRow(label: UIStrings.Game.total1, valueForPlayer: total1Text)
+                if game.notation.upperSectionIsEnabled {
+                    sectionHeader(
+                        UIStrings.Game.upperSection,
+                        detail: upperSectionDetailText
+                    )
+                    rowUpper(label: UIStrings.Game.ones,   face: 1, keyPath: \Scorecard.ones)
+                    rowUpper(label: UIStrings.Game.twos,   face: 2, keyPath: \Scorecard.twos)
+                    rowUpper(label: UIStrings.Game.threes, face: 3, keyPath: \Scorecard.threes)
+                    rowUpper(label: UIStrings.Game.fours,  face: 4, keyPath: \Scorecard.fours)
+                    rowUpper(label: UIStrings.Game.fives,  face: 5, keyPath: \Scorecard.fives)
+                    rowUpper(label: UIStrings.Game.sixes,  face: 6, keyPath: \Scorecard.sixes)
+                    totalsRow(label: UIStrings.Game.total1, valueForPlayer: total1Text)
+                }
 
                 // Section milieu
-                sectionHeader(
-                    UIStrings.Game.middleSection,
-                    detail: middleSectionDetailText
-                )
-                rowMaxMin(label: UIStrings.Game.max, keyPath: \Scorecard.maxVals)
-                rowMaxMin(label: UIStrings.Game.min, keyPath: \Scorecard.minVals)
-                if game.notation.middleMode == .bonusGate {
-                    totalsRow(label: "Bonus", valueForPlayer: middleBonusText)
+                if game.notation.middleSectionIsEnabled {
+                    sectionHeader(
+                        UIStrings.Game.middleSection,
+                        detail: middleSectionDetailText
+                    )
+                    rowMaxMin(label: UIStrings.Game.max, keyPath: \Scorecard.maxVals)
+                    rowMaxMin(label: UIStrings.Game.min, keyPath: \Scorecard.minVals)
+                    if game.notation.middleMode == .bonusGate {
+                        totalsRow(label: "Bonus", valueForPlayer: middleBonusText)
+                    }
+                    totalsRow(label: UIStrings.Game.total2, valueForPlayer: total2Text)
                 }
-                totalsRow(label: UIStrings.Game.total2, valueForPlayer: total2Text)
 
                 // Section basse
-                sectionHeader(UIStrings.Game.bottomSection)
-                rowBottom(label: UIStrings.Game.brelan, keyPath: \Scorecard.brelan,
-                          validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleBrelan) },
-                          displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleBrelan) })
-                if game.enableChance {
-                    rowBottom(label: UIStrings.Game.chance, keyPath: \Scorecard.chance,
-                              validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleChance) },
-                              displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleChance) })
-                }
-                rowBottom(label: UIStrings.Game.full, keyPath: \Scorecard.full,
-                          validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleFull) },
-                          displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleFull) })
-
-                HStack(spacing: 0) {
-                    scoreHelpLabel(UIStrings.Game.suite)
-                    pickerRowPlayersOnly(allowedValues: suiteAllowedValuesFromSnapshot(),
-                                         label: UIStrings.Game.suite,
-                                         valueToText: GDV_Helpers.displaySuiteValue,
-                                         keyPath: \.suite)
-                }
-
-                if game.enableSmallStraight {
-                    HStack(spacing: 0) {
-                        scoreHelpLabel(UIStrings.Game.petiteSuite)
-                        pickerRowPlayersOnly(allowedValues: petiteSuiteAllowedValuesFromSnapshot(),
-                                             label: UIStrings.Game.petiteSuite,
-                                             valueToText: GDV_Helpers.displayPetiteSuiteValue,
-                                             keyPath: \.petiteSuite)
+                if game.notation.bottomSectionIsEnabled {
+                    sectionHeader(UIStrings.Game.bottomSection)
+                    if game.notation.isBottomFieldEnabled(.brelan) {
+                        rowFigure(
+                            label: UIStrings.Game.brelan,
+                            figure: .brelan,
+                            rule: game.notation.ruleBrelan,
+                            keyPath: \Scorecard.brelan
+                        )
                     }
-                }
-
-                HStack(spacing: 0) {
-                    scoreHelpLabel(UIStrings.Game.carre)
-                    pickerRowPlayersOnly(
-                        allowedValues: carreAllowedValuesFromSnapshot(),
-                        label: UIStrings.Game.carre,
-                        valueToText: {
-                            figureCellLabel($0, rule: game.notation.ruleCarre)
-                        },
-                        menuValueToText: {
-                            figureMenuLabel(
-                                $0,
-                                name: UIStrings.Game.carre,
-                                rule: game.notation.ruleCarre
-                            )
-                        },
-                        showsRawValueBadgeWhenTransformed: true,
-                        keyPath: \.carre
-                    )
-                }
-
-                HStack(spacing: 0) {
-                    scoreHelpLabel(UIStrings.Game.yams)
-                    pickerRowPlayersOnly(
-                        allowedValues: yamsAllowedValuesFromSnapshot(),
-                        label: UIStrings.Game.yams,
-                        valueToText: {
-                            figureCellLabel($0, rule: game.notation.ruleYams)
-                        },
-                        menuValueToText: {
-                            figureMenuLabel(
-                                $0,
-                                name: UIStrings.Game.yams,
-                                rule: game.notation.ruleYams
-                            )
-                        },
-                        showsRawValueBadgeWhenTransformed: true,
-                        keyPath: \.yams
-                    )
-                }
-
-                if extraYamsIsEnabled {
-                    HStack(spacing: 0) {
-                        scoreHelpLabel("Prime Yams supplémentaire")
-                        extraYamsRowPlayersOnly()
+                    if game.notation.isBottomFieldEnabled(.chance) {
+                        rowFigure(
+                            label: UIStrings.Game.chance,
+                            figure: .chance,
+                            rule: game.notation.ruleChance,
+                            keyPath: \Scorecard.chance
+                        )
                     }
-                }
+                    if game.notation.isBottomFieldEnabled(.full) {
+                        rowFigure(
+                            label: UIStrings.Game.full,
+                            figure: .full,
+                            rule: game.notation.ruleFull,
+                            keyPath: \Scorecard.full
+                        )
+                    }
 
-                totalsRow(label: UIStrings.Game.total3, valueForPlayer: total3Text)
+                    if game.notation.isBottomFieldEnabled(.suite) {
+                        HStack(spacing: 0) {
+                            scoreHelpLabel(UIStrings.Game.suite)
+                            pickerRowPlayersOnly(allowedValues: suiteAllowedValuesFromSnapshot(),
+                                                 label: UIStrings.Game.suite,
+                                                 valueToText: GDV_Helpers.displaySuiteValue,
+                                                 keyPath: \.suite)
+                        }
+                    }
+
+                    if game.notation.isBottomFieldEnabled(.petiteSuite) {
+                        HStack(spacing: 0) {
+                            scoreHelpLabel(UIStrings.Game.petiteSuite)
+                            pickerRowPlayersOnly(allowedValues: petiteSuiteAllowedValuesFromSnapshot(),
+                                                 label: UIStrings.Game.petiteSuite,
+                                                 valueToText: GDV_Helpers.displayPetiteSuiteValue,
+                                                 keyPath: \.petiteSuite)
+                        }
+                    }
+
+                    if game.notation.isBottomFieldEnabled(.carre) {
+                        HStack(spacing: 0) {
+                            scoreHelpLabel(UIStrings.Game.carre)
+                            pickerRowPlayersOnly(
+                                allowedValues: carreAllowedValuesFromSnapshot(),
+                                label: UIStrings.Game.carre,
+                                valueToText: {
+                                    figureCellLabel($0, rule: game.notation.ruleCarre)
+                                },
+                                menuValueToText: {
+                                    figureMenuLabel(
+                                        $0,
+                                        name: UIStrings.Game.carre,
+                                        rule: game.notation.ruleCarre
+                                    )
+                                },
+                                showsRawValueBadgeWhenTransformed: true,
+                                keyPath: \.carre
+                            )
+                        }
+                    }
+
+                    if game.notation.isBottomFieldEnabled(.yams) {
+                        HStack(spacing: 0) {
+                            scoreHelpLabel(UIStrings.Game.yams)
+                            pickerRowPlayersOnly(
+                                allowedValues: yamsAllowedValuesFromSnapshot(),
+                                label: UIStrings.Game.yams,
+                                valueToText: {
+                                    figureCellLabel($0, rule: game.notation.ruleYams)
+                                },
+                                menuValueToText: {
+                                    figureMenuLabel(
+                                        $0,
+                                        name: UIStrings.Game.yams,
+                                        rule: game.notation.ruleYams
+                                    )
+                                },
+                                showsRawValueBadgeWhenTransformed: true,
+                                keyPath: \.yams
+                            )
+                        }
+                    }
+
+                    if extraYamsIsEnabled {
+                        HStack(spacing: 0) {
+                            scoreHelpLabel("Prime Yams supplémentaire")
+                            extraYamsRowPlayersOnly()
+                        }
+                    }
+
+                    totalsRow(label: UIStrings.Game.total3, valueForPlayer: total3Text)
+                }
                 totalsRow(label: UIStrings.Game.totalAll, valueForPlayer: totalAllText)
                     .padding(.top, 6)
             }
@@ -1054,6 +1387,7 @@ struct GameDetailView: View {
         .font(font)
         .frame(
             width: width ?? labelColumnWidth,
+            height: cellRowHeight,
             alignment: .leading
         )
     }
@@ -1140,74 +1474,151 @@ struct GameDetailView: View {
             Color.clear.frame(height: namesHeaderHeight + namesHeaderBottom)   // ✅
 
             // Section haute
-            overflowSectionHeader(
-                UIStrings.Game.upperSection,
-                detail: upperSectionDetailText
-            )
-                .frame(height: headerRowHeight)
-            scoreHelpLabel(UIStrings.Game.ones).frame(height: cellRowHeight)
-            scoreHelpLabel(UIStrings.Game.twos).frame(height: cellRowHeight)
-            scoreHelpLabel(UIStrings.Game.threes).frame(height: cellRowHeight)
-            scoreHelpLabel(UIStrings.Game.fours).frame(height: cellRowHeight)
-            scoreHelpLabel(UIStrings.Game.fives).frame(height: cellRowHeight)
-            scoreHelpLabel(UIStrings.Game.sixes).frame(height: cellRowHeight)
-            Text(UIStrings.Game.total1).font(.headline).frame(height: cellRowHeight, alignment: .leading)
+            if game.notation.upperSectionIsEnabled {
+                overflowSectionHeader(
+                    UIStrings.Game.upperSection,
+                    detail: upperSectionDetailText
+                )
+                    .frame(height: headerRowHeight)
+                scoreHelpLabel(UIStrings.Game.ones).frame(height: cellRowHeight)
+                scoreHelpLabel(UIStrings.Game.twos).frame(height: cellRowHeight)
+                scoreHelpLabel(UIStrings.Game.threes).frame(height: cellRowHeight)
+                scoreHelpLabel(UIStrings.Game.fours).frame(height: cellRowHeight)
+                scoreHelpLabel(UIStrings.Game.fives).frame(height: cellRowHeight)
+                scoreHelpLabel(UIStrings.Game.sixes).frame(height: cellRowHeight)
+                scoreHelpLabel(UIStrings.Game.total1, font: .headline)
+                    .frame(height: cellRowHeight)
+            }
 
             // Section milieu
-            overflowSectionHeader(
-                UIStrings.Game.middleSection,
-                detail: middleSectionDetailText
-            )
-                .frame(height: headerRowHeight)
-            scoreHelpLabel(UIStrings.Game.max).frame(height: cellRowHeight)
-            scoreHelpLabel(UIStrings.Game.min).frame(height: cellRowHeight)
-            if game.notation.middleMode == .bonusGate {
-                Text("Bonus").font(.headline).frame(height: cellRowHeight, alignment: .leading)
+            if game.notation.middleSectionIsEnabled {
+                overflowSectionHeader(
+                    UIStrings.Game.middleSection,
+                    detail: middleSectionDetailText
+                )
+                    .frame(height: headerRowHeight)
+                scoreHelpLabel(UIStrings.Game.max).frame(height: cellRowHeight)
+                scoreHelpLabel(UIStrings.Game.min).frame(height: cellRowHeight)
+                if game.notation.middleMode == .bonusGate {
+                    scoreHelpLabel("Bonus", font: .headline)
+                        .frame(height: cellRowHeight)
+                }
+                scoreHelpLabel(UIStrings.Game.total2, font: .headline)
+                    .frame(height: cellRowHeight)
             }
-            Text(UIStrings.Game.total2).font(.headline).frame(height: cellRowHeight, alignment: .leading)
 
             // Section basse
-            overflowSectionHeader(UIStrings.Game.bottomSection)
-                .frame(height: headerRowHeight)
-            scoreHelpLabel(UIStrings.Game.brelan).frame(height: cellRowHeight)
-            if game.enableChance { scoreHelpLabel(UIStrings.Game.chance).frame(height: cellRowHeight) }
-            scoreHelpLabel(UIStrings.Game.full).frame(height: cellRowHeight)
-            scoreHelpLabel(UIStrings.Game.suite).frame(height: cellRowHeight)
-            if game.enableSmallStraight { scoreHelpLabel(UIStrings.Game.petiteSuite).frame(height: cellRowHeight) }
-            scoreHelpLabel(UIStrings.Game.carre).frame(height: cellRowHeight)
-            scoreHelpLabel(UIStrings.Game.yams).frame(height: cellRowHeight)
-            if extraYamsIsEnabled { scoreHelpLabel("Prime Yams supplémentaire").frame(height: cellRowHeight) }
-            Text(UIStrings.Game.total3).font(.headline).frame(height: cellRowHeight, alignment: .leading)
+            if game.notation.bottomSectionIsEnabled {
+                overflowSectionHeader(UIStrings.Game.bottomSection)
+                    .frame(height: headerRowHeight)
+                if game.notation.isBottomFieldEnabled(.brelan) { scoreHelpLabel(UIStrings.Game.brelan).frame(height: cellRowHeight) }
+                if game.notation.isBottomFieldEnabled(.chance) { scoreHelpLabel(UIStrings.Game.chance).frame(height: cellRowHeight) }
+                if game.notation.isBottomFieldEnabled(.full) { scoreHelpLabel(UIStrings.Game.full).frame(height: cellRowHeight) }
+                if game.notation.isBottomFieldEnabled(.suite) { scoreHelpLabel(UIStrings.Game.suite).frame(height: cellRowHeight) }
+                if game.notation.isBottomFieldEnabled(.petiteSuite) { scoreHelpLabel(UIStrings.Game.petiteSuite).frame(height: cellRowHeight) }
+                if game.notation.isBottomFieldEnabled(.carre) { scoreHelpLabel(UIStrings.Game.carre).frame(height: cellRowHeight) }
+                if game.notation.isBottomFieldEnabled(.yams) { scoreHelpLabel(UIStrings.Game.yams).frame(height: cellRowHeight) }
+                if extraYamsIsEnabled { scoreHelpLabel("Prime Yams supplémentaire").frame(height: cellRowHeight) }
+                scoreHelpLabel(UIStrings.Game.total3, font: .headline)
+                    .frame(height: cellRowHeight)
+            }
 
             // Total général
-            Text(UIStrings.Game.totalAll).font(.headline).padding(.top, 6).frame(height: cellRowHeight, alignment: .leading)
+            scoreHelpLabel(UIStrings.Game.totalAll, font: .headline)
+                .padding(.top, 6)
+                .frame(height: cellRowHeight)
         }
         .frame(width: labelColumnWidth, alignment: .leading)
         .font(.body)
     }
 
     private func playersColumnsHeader() -> some View {
-        HStack(spacing: 0) {
-            ForEach(Array(displayPlayerIDs.enumerated()), id: \.element) { index, pid in
-                let name = allPlayers.first(where: { $0.id == pid })?.nickname ?? "—"
-                let baseColor = colorForPlayerID(pid)
+        ZStack {
+            GeometryReader { proxy in
+                if let activePlayerID = game.activePlayerID,
+                   let activeIndex = displayPlayerIDs.firstIndex(of: activePlayerID),
+                   !displayPlayerIDs.isEmpty {
+                    let cellWidth = proxy.size.width / CGFloat(displayPlayerIDs.count)
+                    let xPosition = cellWidth * (CGFloat(activeIndex) + 0.5)
 
-                Text(name)
-                    .font(.footnote.weight(.semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .frame(minWidth: minCellWidth, maxWidth: .infinity)
-                    .padding(.vertical, 6)
-                    .background(baseColor.opacity(0.10)) // ← fond des chips
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(baseColor, lineWidth: (game.activePlayerID == pid) ? 2 : 1) // ← contour
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .padding(.horizontal, 2)
-                    .contentShape(Rectangle())
-                    .opacity(canChangePlayerByTap ? 1.0 : 0.45)
-                    .onTapGesture { setActivePlayer(pid) }
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(
+                                activePlayerHaloOuterColor.opacity(activePlayerHaloOuterOpacity),
+                                lineWidth: 8
+                            )
+                            .frame(width: max(0, cellWidth - 2), height: 28)
+                            .blur(radius: 13)
+
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .stroke(
+                                colorForPlayerID(activePlayerID)
+                                    .opacity(activePlayerColorHaloOpacity),
+                                lineWidth: 6
+                            )
+                            .frame(width: max(0, cellWidth - 3), height: 27)
+                            .blur(radius: 8)
+
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(
+                                activePlayerHaloColor.opacity(activePlayerHaloInnerOpacity),
+                                lineWidth: 3
+                            )
+                            .frame(width: max(0, cellWidth - 4), height: 26)
+                            .blur(radius: 4)
+                    }
+                    .position(x: xPosition, y: proxy.size.height / 2)
+                }
+            }
+            .allowsHitTesting(false)
+
+            HStack(spacing: 0) {
+                ForEach(Array(displayPlayerIDs.enumerated()), id: \.element) { _, pid in
+                    let name = allPlayers.first(where: { $0.id == pid })?.displayName ?? "—"
+                    let baseColor = colorForPlayerID(pid)
+
+                    Text(name)
+                        .font(.footnote.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .frame(minWidth: minCellWidth, maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                        .background {
+                            let shape = RoundedRectangle(cornerRadius: 8)
+                            ZStack {
+                                if usesCustomScorecardBackground {
+                                    shape.fill(Color(uiColor: .secondarySystemBackground))
+                                    shape.fill(baseColor.opacity(0.12))
+                                } else {
+                                    shape.fill(baseColor.opacity(0.10))
+                                }
+                            }
+                        }
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(
+                                    baseColor,
+                                    lineWidth: (game.activePlayerID == pid) ? 2 : 1
+                                )
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay {
+                            if game.activePlayerID == pid {
+                                // Une bordure légère garde le joueur actif identifiable,
+                                // tandis que le halo diffus reste derrière tous les boutons.
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .stroke(
+                                        activePlayerHaloColor.opacity(
+                                            usesCustomScorecardBackground ? 0.38 : 0.25
+                                        ),
+                                        lineWidth: 1
+                                    )
+                            }
+                        }
+                        .padding(.horizontal, 2)
+                        .contentShape(Rectangle())
+                        .onTapGesture { setActivePlayer(pid) }
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1220,92 +1631,114 @@ struct GameDetailView: View {
             playersColumnsHeader()
 
             // Section haute
-            Color.clear.frame(height: headerRowHeight)
-            pickerRowPlayersOnly(allowedValues: allowed(for: 1), label: UIStrings.Game.ones, keyPath: \.ones)
-            pickerRowPlayersOnly(allowedValues: allowed(for: 2), label: UIStrings.Game.twos, keyPath: \.twos)
-            pickerRowPlayersOnly(allowedValues: allowed(for: 3), label: UIStrings.Game.threes, keyPath: \.threes)
-            pickerRowPlayersOnly(allowedValues: allowed(for: 4), label: UIStrings.Game.fours, keyPath: \.fours)
-            pickerRowPlayersOnly(allowedValues: allowed(for: 5), label: UIStrings.Game.fives, keyPath: \.fives)
-            pickerRowPlayersOnly(allowedValues: allowed(for: 6), label: UIStrings.Game.sixes, keyPath: \.sixes)
-            totalsRowPlayersOnly(valueForPlayer: total1Text)
+            if game.notation.upperSectionIsEnabled {
+                Color.clear.frame(height: headerRowHeight)
+                pickerRowPlayersOnly(allowedValues: allowed(for: 1), label: UIStrings.Game.ones, keyPath: \.ones)
+                pickerRowPlayersOnly(allowedValues: allowed(for: 2), label: UIStrings.Game.twos, keyPath: \.twos)
+                pickerRowPlayersOnly(allowedValues: allowed(for: 3), label: UIStrings.Game.threes, keyPath: \.threes)
+                pickerRowPlayersOnly(allowedValues: allowed(for: 4), label: UIStrings.Game.fours, keyPath: \.fours)
+                pickerRowPlayersOnly(allowedValues: allowed(for: 5), label: UIStrings.Game.fives, keyPath: \.fives)
+                pickerRowPlayersOnly(allowedValues: allowed(for: 6), label: UIStrings.Game.sixes, keyPath: \.sixes)
+                totalsRowPlayersOnly(valueForPlayer: total1Text)
+            }
 
             // Section milieu
-            Color.clear.frame(height: headerRowHeight)
-            numericRowPlayersOnly(keyPath: \.maxVals, label: UIStrings.Game.max)
-            numericRowPlayersOnly(keyPath: \.minVals, label: UIStrings.Game.min)
-            if game.notation.middleMode == .bonusGate {
-                totalsRowPlayersOnly(valueForPlayer: middleBonusText)
+            if game.notation.middleSectionIsEnabled {
+                Color.clear.frame(height: headerRowHeight)
+                numericRowPlayersOnly(keyPath: \.maxVals, label: UIStrings.Game.max)
+                numericRowPlayersOnly(keyPath: \.minVals, label: UIStrings.Game.min)
+                if game.notation.middleMode == .bonusGate {
+                    totalsRowPlayersOnly(valueForPlayer: middleBonusText)
+                }
+                totalsRowPlayersOnly(valueForPlayer: total2Text)
             }
-            totalsRowPlayersOnly(valueForPlayer: total2Text)
 
             // Section basse
-            Color.clear.frame(height: headerRowHeight)
-            numericRowPlayersOnly(keyPath: \.brelan,
-                                  label: UIStrings.Game.brelan,
-                                  validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleBrelan) },
-                                  displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleBrelan) })
-            if game.enableChance {
-                numericRowPlayersOnly(keyPath: \.chance,
-                                      label: UIStrings.Game.chance,
-                                      validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleChance) },
-                                      displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleChance) })
-            }
-            numericRowPlayersOnly(keyPath: \.full,
-                                  label: UIStrings.Game.full,
-                                  validator: { ValidationEngine.sanitizeBottom($0, rule: game.notation.ruleFull) },
-                                  displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: game.notation.ruleFull) })
-
-            pickerRowPlayersOnly(allowedValues: suiteAllowedValuesFromSnapshot(),
-                                 label: UIStrings.Game.suite,
-                                 valueToText: GDV_Helpers.displaySuiteValue,
-                                 keyPath: \.suite)
-            
-            if game.enableSmallStraight {
-                pickerRowPlayersOnly(allowedValues: petiteSuiteAllowedValuesFromSnapshot(),
-                                     label: UIStrings.Game.petiteSuite,
-                                     valueToText: GDV_Helpers.displayPetiteSuiteValue,
-                                     keyPath: \.petiteSuite)
-            }
-
-            pickerRowPlayersOnly(
-                allowedValues: carreAllowedValuesFromSnapshot(),
-                label: UIStrings.Game.carre,
-                valueToText: {
-                    figureCellLabel($0, rule: game.notation.ruleCarre)
-                },
-                menuValueToText: {
-                    figureMenuLabel(
-                        $0,
-                        name: UIStrings.Game.carre,
-                        rule: game.notation.ruleCarre
+            if game.notation.bottomSectionIsEnabled {
+                Color.clear.frame(height: headerRowHeight)
+                if game.notation.isBottomFieldEnabled(.brelan) {
+                    figureInputRowPlayersOnly(
+                        label: UIStrings.Game.brelan,
+                        figure: .brelan,
+                        rule: game.notation.ruleBrelan,
+                        keyPath: \.brelan
                     )
-                },
-                showsRawValueBadgeWhenTransformed: true,
-                keyPath: \.carre
-            )
-
-            pickerRowPlayersOnly(
-                allowedValues: yamsAllowedValuesFromSnapshot(),
-                label: UIStrings.Game.yams,
-                valueToText: {
-                    figureCellLabel($0, rule: game.notation.ruleYams)
-                },
-                menuValueToText: {
-                    figureMenuLabel(
-                        $0,
-                        name: UIStrings.Game.yams,
-                        rule: game.notation.ruleYams
+                }
+                if game.notation.isBottomFieldEnabled(.chance) {
+                    figureInputRowPlayersOnly(
+                        label: UIStrings.Game.chance,
+                        figure: .chance,
+                        rule: game.notation.ruleChance,
+                        keyPath: \.chance
                     )
-                },
-                showsRawValueBadgeWhenTransformed: true,
-                keyPath: \.yams
-            )
+                }
+                if game.notation.isBottomFieldEnabled(.full) {
+                    figureInputRowPlayersOnly(
+                        label: UIStrings.Game.full,
+                        figure: .full,
+                        rule: game.notation.ruleFull,
+                        keyPath: \.full
+                    )
+                }
 
-            if extraYamsIsEnabled {
-                extraYamsRowPlayersOnly()
+                if game.notation.isBottomFieldEnabled(.suite) {
+                    pickerRowPlayersOnly(allowedValues: suiteAllowedValuesFromSnapshot(),
+                                         label: UIStrings.Game.suite,
+                                         valueToText: GDV_Helpers.displaySuiteValue,
+                                         keyPath: \.suite)
+                }
+
+                if game.notation.isBottomFieldEnabled(.petiteSuite) {
+                    pickerRowPlayersOnly(allowedValues: petiteSuiteAllowedValuesFromSnapshot(),
+                                         label: UIStrings.Game.petiteSuite,
+                                         valueToText: GDV_Helpers.displayPetiteSuiteValue,
+                                         keyPath: \.petiteSuite)
+                }
+
+                if game.notation.isBottomFieldEnabled(.carre) {
+                    pickerRowPlayersOnly(
+                        allowedValues: carreAllowedValuesFromSnapshot(),
+                        label: UIStrings.Game.carre,
+                        valueToText: {
+                            figureCellLabel($0, rule: game.notation.ruleCarre)
+                        },
+                        menuValueToText: {
+                            figureMenuLabel(
+                                $0,
+                                name: UIStrings.Game.carre,
+                                rule: game.notation.ruleCarre
+                            )
+                        },
+                        showsRawValueBadgeWhenTransformed: true,
+                        keyPath: \.carre
+                    )
+                }
+
+                if game.notation.isBottomFieldEnabled(.yams) {
+                    pickerRowPlayersOnly(
+                        allowedValues: yamsAllowedValuesFromSnapshot(),
+                        label: UIStrings.Game.yams,
+                        valueToText: {
+                            figureCellLabel($0, rule: game.notation.ruleYams)
+                        },
+                        menuValueToText: {
+                            figureMenuLabel(
+                                $0,
+                                name: UIStrings.Game.yams,
+                                rule: game.notation.ruleYams
+                            )
+                        },
+                        showsRawValueBadgeWhenTransformed: true,
+                        keyPath: \.yams
+                    )
+                }
+
+                if extraYamsIsEnabled {
+                    extraYamsRowPlayersOnly()
+                }
+
+                totalsRowPlayersOnly(valueForPlayer: total3Text)
             }
-
-            totalsRowPlayersOnly(valueForPlayer: total3Text)
             totalsRowPlayersOnly(valueForPlayer: totalAllText)
                 .padding(.top, 6)
         }
@@ -1327,13 +1760,53 @@ struct GameDetailView: View {
         }
     }
 
-    private func rowBottom(label: String,
-                           keyPath: WritableKeyPath<Scorecard, [Int]>,
-                           validator: ((Int?) -> Int)? = nil,
-                           displayMap: ((Int) -> String)? = nil) -> some View {
+    private func rowFigure(
+        label: String,
+        figure: BottomScoreField,
+        rule: FigureRule,
+        keyPath: WritableKeyPath<Scorecard, [Int]>
+    ) -> some View {
         HStack(spacing: 0) {
             scoreHelpLabel(label)
-            numericRowPlayersOnly(keyPath: keyPath, label: label, validator: validator, displayMap: displayMap)
+            figureInputRowPlayersOnly(
+                label: label,
+                figure: figure,
+                rule: rule,
+                keyPath: keyPath
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func figureInputRowPlayersOnly(
+        label: String,
+        figure: BottomScoreField,
+        rule: FigureRule,
+        keyPath: WritableKeyPath<Scorecard, [Int]>
+    ) -> some View {
+        if rule.mode == .fixed || rule.resolvedDiceBasis(for: figure) == .figureDice {
+            pickerRowPlayersOnly(
+                allowedValues: figureAllowedValues(
+                    rule: rule,
+                    rawValues: figureDiceRawValues(for: figure)
+                ),
+                label: label,
+                valueToText: {
+                    figureCellLabel($0, rule: rule)
+                },
+                menuValueToText: {
+                    figureMenuLabel($0, name: label, rule: rule)
+                },
+                showsRawValueBadgeWhenTransformed: true,
+                keyPath: keyPath
+            )
+        } else {
+            numericRowPlayersOnly(
+                keyPath: keyPath,
+                label: label,
+                validator: { ValidationEngine.sanitizeBottom($0, rule: rule) },
+                displayMap: { ValidationEngine.displayForBottom(stored: $0, rule: rule) }
+            )
         }
     }
 
@@ -1409,8 +1882,10 @@ struct GameDetailView: View {
 
                     // Draw the tinted background BEHIND the NumericRow (fixes dark-mode caret visibility)
                     ZStack {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(columnTint(pid: pid, isFilled: effectiveFilledForTint))
+                        scoreCellBackground(
+                            pid: pid,
+                            isFilled: effectiveFilledForTint
+                        )
                         NumericRow(cfg)
                             .id(cfg.inputID)
                             .frame(
@@ -1450,26 +1925,34 @@ struct GameDetailView: View {
                         && displayedValue != rawText
 
                     Menu {
-                        Picker("Valeur", selection: binding) {
-                            ForEach([-1] + allowedValues, id: \.self) { v in
-                                let title: String = {
-                                    if label == UIStrings.Game.suite {
-                                        return suiteMenuLabelFromSnapshot(v)
-                                } else if label == UIStrings.Game.petiteSuite {
-                                    return petiteSuiteMenuLabelFromSnapshot(v)
-                                } else {
-                                    return menuValueToText.map { $0(v) }
-                                        ?? valueToText.map { $0(v) }
-                                        ?? (v == -1 ? UIStrings.Common.dash : String(v))
+                        if label == UIStrings.Game.suite {
+                            ForEach(
+                                Array(suiteMenuOptionsFromSnapshot().enumerated()),
+                                id: \.offset
+                            ) { _, option in
+                                Button(option.label) {
+                                    binding.wrappedValue = option.value
                                 }
-                            }()
-                                Text(title).tag(v)
+                            }
+                        } else {
+                            Picker("Valeur", selection: binding) {
+                                ForEach([-1] + allowedValues, id: \.self) { v in
+                                    let title: String = {
+                                        if label == UIStrings.Game.petiteSuite {
+                                            return petiteSuiteMenuLabelFromSnapshot(v)
+                                        } else {
+                                            return menuValueToText.map { $0(v) }
+                                                ?? valueToText.map { $0(v) }
+                                                ?? (v == -1 ? UIStrings.Common.dash : String(v))
+                                        }
+                                    }()
+                                    Text(title).tag(v)
+                                }
                             }
                         }
                     } label: {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(columnTint(pid: pid, isFilled: rawValue >= 0))
+                            scoreCellBackground(pid: pid, isFilled: rawValue >= 0)
 
                             Text(displayedValue)
                                 .font(cellFont)
@@ -1578,8 +2061,7 @@ struct GameDetailView: View {
                         .frame(height: cellRowHeight)
                         .padding(.horizontal, cellPadding)
                         .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(columnTint(pid: pid, isFilled: true))
+                            scoreCellBackground(pid: pid, isFilled: true)
                         )
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .padding(.horizontal, 2)
@@ -1591,14 +2073,15 @@ struct GameDetailView: View {
     @ViewBuilder
     private func totalsRow(label: String, valueForPlayer: @escaping (_ playerIdx: Int) -> String) -> some View {
         HStack(spacing: 0) {
-            Text(label).font(.headline).frame(width: labelColumnWidth, alignment: .leading)
+            scoreHelpLabel(label, font: .headline)
             totalsRowPlayersOnly(valueForPlayer: valueForPlayer)
         }
     }
 
     // MARK: - Extra Yams
     private var extraYamsIsEnabled: Bool {
-        game.extraYamsBonusMode != .disabled
+        game.notation.isBottomFieldEnabled(.yams)
+            && game.extraYamsBonusMode != .disabled
     }
 
     private func storageKey(for label: String) -> String {
@@ -1706,10 +2189,16 @@ struct GameDetailView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 38)
                 .foregroundStyle(Color.accentColor.opacity(isDeclared ? 1 : 0.85))
-                .background(
-                    Capsule()
-                        .fill(Color.accentColor.opacity(isDeclared ? 0.24 : 0.07))
-                )
+                .background {
+                    ZStack {
+                        if usesCustomScorecardBackground {
+                            Capsule()
+                                .fill(Color(uiColor: .secondarySystemBackground))
+                        }
+                        Capsule()
+                            .fill(Color.accentColor.opacity(isDeclared ? 0.24 : 0.07))
+                    }
+                }
                 .overlay(
                     Capsule()
                         .stroke(
@@ -1762,8 +2251,7 @@ struct GameDetailView: View {
                         && !currentThrowAlreadyAwarded
 
                     ZStack(alignment: .topTrailing) {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(columnTint(pid: pid, isFilled: awardCount > 0))
+                        scoreCellBackground(pid: pid, isFilled: awardCount > 0)
 
                         if canGrant, let source {
                             Button {
@@ -1947,31 +2435,33 @@ struct GameDetailView: View {
     }
     private func debugFillAllRequiredAndComplete(showNotification: Bool = false) {
         for i in game.scorecards.indices {
-            // haute
-            debugSetValue(playerIdx: i, keyPath: \.ones,   value: 0)
-            debugSetValue(playerIdx: i, keyPath: \.twos,   value: 0)
-            debugSetValue(playerIdx: i, keyPath: \.threes, value: 0)
-            debugSetValue(playerIdx: i, keyPath: \.fours,  value: 0)
-            debugSetValue(playerIdx: i, keyPath: \.fives,  value: 0)
-            debugSetValue(playerIdx: i, keyPath: \.sixes,  value: 0)
-            // milieu
-            debugSetValue(playerIdx: i, keyPath: \.maxVals, value: 0)
-            debugSetValue(playerIdx: i, keyPath: \.minVals, value: 0)
-            // basse
-            debugSetValue(playerIdx: i, keyPath: \.brelan, value: 0)
-            if game.enableChance { debugSetValue(playerIdx: i, keyPath: \.chance, value: 0) }
-            debugSetValue(playerIdx: i, keyPath: \.full,  value: 0)
-            debugSetValue(playerIdx: i, keyPath: \.suite, value: 0)
-            if game.enableSmallStraight { debugSetValue(playerIdx: i, keyPath: \.petiteSuite, value: 0) }
-            debugSetValue(playerIdx: i, keyPath: \.carre, value: 0)
-            debugSetValue(playerIdx: i, keyPath: \.yams,  value: 0)
+            for key in trackedScoreKeys {
+                switch key {
+                case "ones": debugSetValue(playerIdx: i, keyPath: \.ones, value: 0)
+                case "twos": debugSetValue(playerIdx: i, keyPath: \.twos, value: 0)
+                case "threes": debugSetValue(playerIdx: i, keyPath: \.threes, value: 0)
+                case "fours": debugSetValue(playerIdx: i, keyPath: \.fours, value: 0)
+                case "fives": debugSetValue(playerIdx: i, keyPath: \.fives, value: 0)
+                case "sixes": debugSetValue(playerIdx: i, keyPath: \.sixes, value: 0)
+                case "max": debugSetValue(playerIdx: i, keyPath: \.maxVals, value: 0)
+                case "min": debugSetValue(playerIdx: i, keyPath: \.minVals, value: 0)
+                case "brelan": debugSetValue(playerIdx: i, keyPath: \.brelan, value: 0)
+                case "chance": debugSetValue(playerIdx: i, keyPath: \.chance, value: 0)
+                case "full": debugSetValue(playerIdx: i, keyPath: \.full, value: 0)
+                case "suite": debugSetValue(playerIdx: i, keyPath: \.suite, value: 0)
+                case "petiteSuite": debugSetValue(playerIdx: i, keyPath: \.petiteSuite, value: 0)
+                case "carre": debugSetValue(playerIdx: i, keyPath: \.carre, value: 0)
+                case "yams": debugSetValue(playerIdx: i, keyPath: \.yams, value: 0)
+                default: break
+                }
+            }
         }
         game.statusOrDefault = .completed
         game.endedAt = Date()
         try? context.save()
 
         let ranking: [(String, Int)] = orderedPlayers
-            .map { ($0.nickname, totalScore(for: $0.id)) }
+            .map { ($0.displayName, totalScore(for: $0.id)) }
             .sorted { $0.1 > $1.1 }
 
         if showNotification {
@@ -1986,4 +2476,45 @@ struct GameDetailView: View {
         }
     }
     #endif
+}
+
+private struct ScorecardBackgroundView: View {
+    let appearance: ScorecardAppearance
+
+    @State private var image: UIImage?
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                Color(uiColor: .systemBackground)
+
+                switch appearance.mode {
+                case .standard:
+                    EmptyView()
+
+                case .color:
+                    appearance.color
+                        .opacity(appearance.normalizedIntensity)
+
+                case .photo:
+                    if let image {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: proxy.size.width, height: proxy.size.height)
+                            .clipped()
+                            .overlay {
+                                Color(uiColor: .systemBackground)
+                                    .opacity(1 - appearance.normalizedIntensity)
+                            }
+                    }
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+        }
+        .task(id: appearance.imageData) {
+            image = appearance.imageData.flatMap(UIImage.init(data:))
+        }
+    }
 }

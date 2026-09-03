@@ -123,7 +123,7 @@ struct AppStatsView: View {
     }
     
     private var nameByID: [UUID: String] {
-        Dictionary(uniqueKeysWithValues: allPlayers.map { ($0.id, $0.nickname.isEmpty ? $0.name : $0.nickname) })
+        Dictionary(uniqueKeysWithValues: allPlayers.map { ($0.id, $0.displayName) })
     }
     
     private var colorByID: [UUID: Color] {
@@ -146,7 +146,7 @@ struct AppStatsView: View {
                 counts[sc.playerID, default: 0] += 1
             }
         }
-        let nameByID = Dictionary(uniqueKeysWithValues: allPlayers.map { ($0.id, $0.nickname) })
+        let nameByID = Dictionary(uniqueKeysWithValues: allPlayers.map { ($0.id, $0.displayName) })
         return sums.compactMap { (pid, sum) in
             guard let c = counts[pid], c > 0, let name = nameByID[pid] else { return nil }
             return AverageEntry(

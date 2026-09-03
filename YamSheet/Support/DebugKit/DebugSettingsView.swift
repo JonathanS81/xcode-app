@@ -88,7 +88,7 @@ struct DebugEndGameDemoView: View {
             let entries: [EndGameCongratsView.Entry] = game.participantIDs.compactMap { pid in
                 guard let player = try? context.fetch(FetchDescriptor<Player>(predicate: #Predicate { $0.id == pid })).first else { return nil }
                 let score = totalScore(for: pid, in: game)
-                return EndGameCongratsView.Entry(name: player.nickname.isEmpty ? player.name : player.nickname, score: score)
+                return EndGameCongratsView.Entry(name: player.displayName, score: score)
             }
             .sorted { $0.score > $1.score }
 

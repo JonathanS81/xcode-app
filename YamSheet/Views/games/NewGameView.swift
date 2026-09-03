@@ -16,14 +16,16 @@ struct NewGameView: View {
     // Données
     @Query(sort: \Player.nickname) private var players: [Player]
     @Query(sort: \Notation.name)  private var notations: [Notation]
+    @Query                       private var games: [Game]
     @Query                       private var settings: [AppSettings]
 
     // Sélections
     @State private var selectedPlayerIDs: Set<UUID> = []
     @State private var selectedNotationID: Notation.ID? = nil
+    @State private var showsAllPlayers = false
+    @FocusState private var isGameNameFocused: Bool
 
     // Options
-    @State private var comment: String = ""
     @State private var gameName: String = ""
 
     // Navigation directe vers la partie créée
@@ -37,8 +39,45 @@ struct NewGameView: View {
     @State private var activeSheet: CreationSheet?
 
     // Helpers
+    private var displayedNotations: [Notation] {
+        notations.sorted { lhs, rhs in
+            let lhsIsStandard = lhs.builtInIdentifier == .standard
+            let rhsIsStandard = rhs.builtInIdentifier == .standard
+
+            if lhsIsStandard != rhsIsStandard {
+                return lhsIsStandard
+            }
+
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+                == .orderedAscending
+        }
+    }
+
     private var selectedNotation: Notation? {
-        notations.first(where: { $0.id == selectedNotationID }) ?? notations.first
+        displayedNotations.first(where: { $0.id == selectedNotationID })
+            ?? displayedNotations.first
+    }
+    private var playersByActivity: [Player] {
+        var countsByPlayerID: [UUID: Int] = [:]
+        for game in games {
+            for playerID in Set(game.participantIDs) {
+                countsByPlayerID[playerID, default: 0] += 1
+            }
+        }
+
+        return players.sorted { lhs, rhs in
+            let lhsCount = countsByPlayerID[lhs.id, default: 0]
+            let rhsCount = countsByPlayerID[rhs.id, default: 0]
+            if lhsCount != rhsCount { return lhsCount > rhsCount }
+            return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
+                == .orderedAscending
+        }
+    }
+    private var displayedPlayers: [Player] {
+        showsAllPlayers ? playersByActivity : Array(playersByActivity.prefix(5))
+    }
+    private var hiddenPlayersCount: Int {
+        max(0, playersByActivity.count - displayedPlayers.count)
     }
     private var defaultGameName: String {
         let df = DateFormatter()
@@ -60,6 +99,7 @@ struct NewGameView: View {
                         )
                     )
                         .textInputAutocapitalization(.words)
+                        .focused($isGameNameFocused)
                 } header: {
                     HStack {
                         Text("Nom de la partie")
@@ -79,19 +119,42 @@ struct NewGameView: View {
                     if players.isEmpty {
                         Text("Aucun joueur.").foregroundStyle(.secondary)
                     } else {
-                        ForEach(players) { p in
+                        ForEach(displayedPlayers) { p in
                             Toggle(isOn: Binding(
                                 get: { selectedPlayerIDs.contains(p.id) },
                                 set: { isOn in
+                                    isGameNameFocused = false
                                     if isOn { selectedPlayerIDs.insert(p.id) }
                                     else     { selectedPlayerIDs.remove(p.id) }
                                 }
                             )) {
-                                Text(p.nickname)
+                                Text(p.displayName)
                             }
+                        }
+
+                        if hiddenPlayersCount > 0 {
+                            Button {
+                                isGameNameFocused = false
+                                showsAllPlayers = true
+                            } label: {
+                                Label(
+                                    "Voir plus (\(hiddenPlayersCount))",
+                                    systemImage: "chevron.down"
+                                )
+                            }
+                            .buttonStyle(.borderless)
+                        } else if showsAllPlayers && playersByActivity.count > 5 {
+                            Button {
+                                isGameNameFocused = false
+                                showsAllPlayers = false
+                            } label: {
+                                Label("Voir moins", systemImage: "chevron.up")
+                            }
+                            .buttonStyle(.borderless)
                         }
                     }
                     Button {
+                        isGameNameFocused = false
                         activeSheet = .newPlayer
                     } label: {
                         Label("Nouveau joueur", systemImage: "plus.circle")
@@ -104,50 +167,34 @@ struct NewGameView: View {
                         Text("Aucune notation. Créez-en une.").foregroundStyle(.secondary)
                     } else {
                         Picker("Choisir une notation", selection: Binding(
-                            get: { selectedNotationID ?? notations.first?.id },
-                            set: { selectedNotationID = $0 }
+                            get: { selectedNotationID ?? displayedNotations.first?.id },
+                            set: {
+                                isGameNameFocused = false
+                                selectedNotationID = $0
+                            }
                         )) {
-                            ForEach(notations) { n in
+                            ForEach(displayedNotations) { n in
                                 Text(n.name).tag(n.id as Notation.ID?)
                             }
                         }
+
+                        if let notation = selectedNotation {
+                            NotationSummaryView(notation: notation)
+                                .padding(.vertical, 2)
+                        }
                     }
                     Button {
+                        isGameNameFocused = false
                         activeSheet = .newNotation
                     } label: {
                         Label("Créer une notation", systemImage: "plus.square.on.square")
                     }
                 }
 
-                // --- RÉCAPITULATIF DE LA NOTATION ---
-                Section("Détails de la notation") {
-                    if let notation = selectedNotation {
-                        LabeledContent(
-                            "Chance",
-                            value: notation.isChanceEnabled
-                                ? "Activée"
-                                : "Désactivée"
-                        )
-                        LabeledContent(
-                            "Petite suite",
-                            value: notation.isSmallStraightEnabled
-                                ? "Activée"
-                                : "Désactivée"
-                        )
-                        LabeledContent(
-                            "Prime Yams supplémentaire",
-                            value: notation.extraYamsBonusMode.label
-                        )
-                    }
-                }
-
-                Section("Commentaire de la partie") {
-                    TextField("Commentaire", text: $comment)
-                }
-
                 // --- ACTION (gros bouton plein) ---
                 Section {
                     Button {
+                        isGameNameFocused = false
                         createGame()
                     } label: {
                         Text("Créer la partie")
@@ -158,6 +205,8 @@ struct NewGameView: View {
                     .disabled(selectedPlayerIDs.isEmpty || selectedNotation == nil)
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
+            .dismissKeyboardOnOutsideTap()
             .navigationTitle("Nouvelle partie")
             .navigationDestination(item: $createdGame) { g in
                 GameDetailView(game: g)
@@ -165,7 +214,15 @@ struct NewGameView: View {
             }
             .onAppear {
                 if gameName.isEmpty { gameName = defaultGameName }
-                if selectedNotationID == nil { selectedNotationID = notations.first?.id }
+                if selectedNotationID == nil {
+                    selectedNotationID = displayedNotations.first?.id
+                }
+            }
+            .onChange(of: displayedNotations.map(\.id)) { _, notationIDs in
+                if let selectedNotationID, notationIDs.contains(selectedNotationID) {
+                    return
+                }
+                selectedNotationID = notationIDs.first
             }
             // --- FEUILLE MODALE UNIQUE ---
             .sheet(item: $activeSheet) { which in
@@ -175,6 +232,7 @@ struct NewGameView: View {
                         NewPlayerView(onCreated: { newPlayer in
                             // auto-sélectionner le nouveau joueur
                             selectedPlayerIDs.insert(newPlayer.id)
+                            showsAllPlayers = true
                             activeSheet = nil
                         })
                         .navigationTitle("Nouveau joueur")
@@ -202,7 +260,7 @@ struct NewGameView: View {
                 OrderSetupSheet(
                     players: payload.players,
                     idFor: { $0.id },
-                    nameFor: { $0.nickname },
+                    nameFor: { $0.displayName },
                     onConfirm: { orderedIDs in
                         finalizeGame(with: orderedIDs)
                     }
@@ -243,7 +301,7 @@ struct NewGameView: View {
         }()
 
         // 2) Récupère la notation sélectionnée (ou la première existante)
-        guard let notation = selectedNotation ?? notations.first else { return }
+        guard let notation = selectedNotation ?? displayedNotations.first else { return }
         let snapshot = notation.snapshot()
 
         // 3) Nom final
@@ -252,12 +310,14 @@ struct NewGameView: View {
             : gameName
 
         // 4) Instancie Game
-        let game = Game(settings: appSettings, notation: snapshot, columns: 1, comment: comment)
+        let game = Game(settings: appSettings, notation: snapshot, columns: 1, comment: "")
         game.name = nameToUse
-        game.enableChance = snapshot.resolvedChanceEnabled
-        game.enableSmallStraight = snapshot.resolvedSmallStraightEnabled
+        game.enableChance = snapshot.isBottomFieldEnabled(.chance)
+        game.enableSmallStraight = snapshot.isBottomFieldEnabled(.petiteSuite)
         game.smallStraightScore = snapshot.rulePetiteSuite.fixedValue
-        game.enableExtraYamsBonus = snapshot.resolvedExtraYamsBonusMode != .disabled
+        game.enableExtraYamsBonus = snapshot.isBottomFieldEnabled(.yams)
+            && snapshot.resolvedExtraYamsBonusMode != .disabled
+        game.requiredNotationKeys = snapshot.requiredScoreKeys
         game.participantIDs = orderedIDs
         game.turnOrder = orderedIDs
         game.currentTurnIndex = 0

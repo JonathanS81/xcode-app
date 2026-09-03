@@ -141,7 +141,7 @@ enum StatsService {
 
             for sc in g.scorecards {
                 let pid = sc.playerID
-                let name = playersByID[pid]?.nickname ?? "—"
+                let name = playersByID[pid]?.displayName ?? "—"
 
                 var e = acc[pid] ?? (
                     scores: [],
@@ -261,7 +261,7 @@ enum StatsService {
             if let max = totals.max(by: { $0.total < $1.total }) {
                 // Best ever (record global)
                 if bestEver == nil || max.total > bestEver!.score {
-                    let winnerName = allPlayers.first(where: { $0.id == max.pid })?.nickname
+                    let winnerName = allPlayers.first(where: { $0.id == max.pid })?.displayName
                         ?? g.scorecards.first(where: { $0.playerID == max.pid }).map { _ in "—" }
                         ?? "—"
                     bestEver = (winnerName, max.total)
@@ -283,7 +283,7 @@ enum StatsService {
 
         // Leaderboard = meilleurs scores personnels
         let leaderboard: [(name: String, bestScore: Int)] = bestByPlayer.compactMap { (pid, score) in
-            guard let name = allPlayers.first(where: { $0.id == pid })?.nickname else { return nil }
+            guard let name = allPlayers.first(where: { $0.id == pid })?.displayName else { return nil }
             return (name, score)
         }
         .sorted { $0.bestScore > $1.bestScore }
@@ -292,7 +292,7 @@ enum StatsService {
         let mostWins: (name: String, wins: Int)? = winsByPlayer
             .max(by: { $0.value < $1.value })
             .flatMap { (pid, w) in
-                if let name = allPlayers.first(where: { $0.id == pid })?.nickname {
+                if let name = allPlayers.first(where: { $0.id == pid })?.displayName {
                     return (name, w)
                 }
                 return nil

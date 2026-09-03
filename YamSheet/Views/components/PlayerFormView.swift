@@ -10,12 +10,9 @@ import PhotosUI
 
 struct PlayerFormView: View {
     struct Draft {
-        var name: String = ""
-        var nickname: String = ""
+        var displayName: String = ""
         var email: String = ""
-        var favoriteEmoji: String = ""
         var preferredColor: Color = .blue
-        var isGuest: Bool = false
         var avatarImageData: Data?
     }
 
@@ -26,7 +23,7 @@ struct PlayerFormView: View {
 
     @State private var photoItem: PhotosPickerItem?
     @FocusState private var focusedField: Field?
-    enum Field { case name, nickname, email, emoji }
+    enum Field { case displayName, email }
 
     var body: some View {
         Form {
@@ -45,13 +42,9 @@ struct PlayerFormView: View {
                     }
                 }
 
-                TextField("Nom (obligatoire)", text: $draft.name)
+                TextField("Nom (obligatoire)", text: $draft.displayName)
                     .textContentType(.name)
-                    .focused($focusedField, equals: .name)
-
-                TextField("Surnom", text: $draft.nickname)
-                    .textContentType(.nickname)
-                    .focused($focusedField, equals: .nickname)
+                    .focused($focusedField, equals: .displayName)
 
                 TextField("Email (facultatif)", text: $draft.email)
                     .keyboardType(.emailAddress)
@@ -60,13 +53,9 @@ struct PlayerFormView: View {
                     .disableAutocorrection(true)
                     .focused($focusedField, equals: .email)
 
-                Toggle("Invité", isOn: $draft.isGuest)
             }
 
             Section("Préférences") {
-                TextField("Emoji favori (facultatif)", text: $draft.favoriteEmoji)
-                    .focused($focusedField, equals: .emoji)
-
                 ColorPicker("Couleur", selection: $draft.preferredColor, supportsOpacity: false)
             }
 
@@ -75,7 +64,11 @@ struct PlayerFormView: View {
                     onValidate?(draft)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(
+                    draft.displayName
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                        .isEmpty
+                )
 
                 if onCancel != nil {
                     Button("Annuler", role: .cancel) { onCancel?() }

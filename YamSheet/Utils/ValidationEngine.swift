@@ -22,7 +22,7 @@ enum ValidationEngine {
         _ = currentMin
         _ = strictGreater
         guard let raw = newMax else { return -1 }          // -1 = vide
-        return clamp5to30(raw)
+        return (5...30).contains(raw) ? raw : -1
     }
 
     /// Min dans [5,30]. La relation avec Max est évaluée au calcul, sans modifier la saisie.
@@ -30,7 +30,7 @@ enum ValidationEngine {
         _ = currentMax
         _ = strictGreater
         guard let raw = newMin else { return -1 }
-        return clamp5to30(raw)
+        return (5...30).contains(raw) ? raw : -1
     }
 
     // MARK: - Bottom (figures)

@@ -251,8 +251,8 @@ private struct PlayerDataExportView: View {
 
                 ForEach(players) { player in
                     selectionRow(
-                        title: player.nickname,
-                        subtitle: player.name,
+                        title: player.displayName,
+                        subtitle: nil,
                         isSelected: selectedIDs.contains(player.id)
                     ) {
                         toggle(player.id, in: &selectedIDs)
@@ -301,7 +301,7 @@ private struct PlayerDataExportView: View {
         do {
             let baseName = exportFilename(
                 type: selectedPlayers.count == 1
-                    ? "Joueur-\(safeFilename(selectedPlayers[0].nickname))"
+                    ? "Joueur-\(safeFilename(selectedPlayers[0].displayName))"
                     : "Joueurs-\(selectedPlayers.count)"
             )
             var files: [YamSheetPreparedExport] = []
@@ -360,7 +360,7 @@ private struct GameDataExportView: View {
         return games.filter { game in
             game.name.localizedCaseInsensitiveContains(query)
                 || game.participantIDs.contains { id in
-                    playersByID[id]?.nickname.localizedCaseInsensitiveContains(query)
+                    playersByID[id]?.displayName.localizedCaseInsensitiveContains(query)
                         == true
                 }
         }
@@ -433,7 +433,7 @@ private struct GameDataExportView: View {
 
     private func gameSubtitle(_ game: Game) -> String {
         let names = game.participantIDs.compactMap {
-            playersByID[$0]?.nickname
+            playersByID[$0]?.displayName
         }
         let participants = names.isEmpty
             ? "Aucun joueur"

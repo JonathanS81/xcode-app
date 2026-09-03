@@ -147,9 +147,9 @@ struct NumericRow: View {
         let intVal = Int(text)
         var validated = cfg.validator?(intVal) ?? (intVal ?? -1)
 
-        // Si l'utilisateur saisit une valeur > 0 mais que le validator la rejette (== -1),
+        // Si l'utilisateur saisit une valeur mais que le validator la rejette (== -1),
         // on n'auto-corrige pas : on notifie et on restaure la valeur précédente.
-        if let raw = intVal, raw > 0, cfg.validator != nil, validated == -1 {
+        if let raw = intVal, cfg.validator != nil, validated == -1 {
             cfg.onInvalidInput?(raw)
             // Restaure la valeur précédente sans modification
             cfg.value.wrappedValue = previous

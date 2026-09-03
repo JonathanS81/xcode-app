@@ -81,7 +81,9 @@ enum YamSheetBackupService {
             playerRecords.append(.placeholder(id: missingID))
         }
         playerRecords.sort {
-            $0.nickname.localizedCaseInsensitiveCompare($1.nickname) == .orderedAscending
+            $0.resolvedDisplayName.localizedCaseInsensitiveCompare(
+                $1.resolvedDisplayName
+            ) == .orderedAscending
         }
 
         let statistics: [YamSheetPlayerStatisticsRecord]
@@ -165,19 +167,34 @@ enum YamSheetBackupService {
                 result.playersAdded += 1
             }
 
-            let existingNotations = try context.fetch(FetchDescriptor<Notation>())
+            var existingNotations = try context.fetch(FetchDescriptor<Notation>())
             var existingNotationRecords = Set(
-                existingNotations.map(YamSheetNotationRecord.init)
+                existingNotations.map {
+                    YamSheetNotationRecord($0).duplicateDetectionRecord
+                }
             )
 
             for record in archive.notations {
-                if existingNotationRecords.contains(record) {
+                let duplicateDetectionRecord = record.duplicateDetectionRecord
+                if existingNotationRecords.contains(duplicateDetectionRecord) {
                     result.notationsSkipped += 1
                     continue
                 }
 
-                context.insert(record.makeNotation())
-                existingNotationRecords.insert(record)
+                let importedNotation = record.makeNotation(
+                    legacyCreationDate: NotationCreationDatePolicy.fallback(
+                        sourceAppVersion: archive.metadata.sourceAppVersion,
+                        exportedAt: archive.metadata.exportedAt
+                    )
+                )
+                resolveNotationNameConflict(
+                    for: importedNotation,
+                    sourceName: record.name,
+                    among: existingNotations
+                )
+                context.insert(importedNotation)
+                existingNotations.append(importedNotation)
+                existingNotationRecords.insert(duplicateDetectionRecord)
                 result.notationsAdded += 1
             }
 
@@ -251,11 +268,9 @@ enum YamSheetBackupService {
             return emailMatch
         }
 
-        let importedName = normalizedIdentity(record.name)
-        let importedNickname = normalizedIdentity(record.nickname)
+        let importedDisplayName = normalizedIdentity(record.resolvedDisplayName)
         return players.first {
-            normalizedIdentity($0.name) == importedName
-                && normalizedIdentity($0.nickname) == importedNickname
+            normalizedIdentity($0.displayName) == importedDisplayName
         }
     }
 
@@ -276,6 +291,44 @@ enum YamSheetBackupService {
             .joined(separator: " ")
     }
 
+    /// Conserve les notations homonymes qui n'ont pas les mêmes règles.
+    /// La plus ancienne reçoit V1, la suivante V2, etc. Une notation intégrée
+    /// garde toutefois son nom officiel et occupe sa place chronologique.
+    private static func resolveNotationNameConflict(
+        for importedNotation: Notation,
+        sourceName: String,
+        among existingNotations: [Notation]
+    ) {
+        let baseName = notationVersionBaseName(sourceName)
+        let identity = normalizedIdentity(baseName)
+        let conflicts = existingNotations.filter {
+            normalizedIdentity(notationVersionBaseName($0.name)) == identity
+        }
+
+        guard !conflicts.isEmpty else {
+            importedNotation.name = sourceName.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            return
+        }
+
+        let ordered = (conflicts + [importedNotation])
+            .enumerated()
+            .sorted { lhs, rhs in
+                let lhsDate = lhs.element.createdAt ?? .distantPast
+                let rhsDate = rhs.element.createdAt ?? .distantPast
+                if lhsDate == rhsDate {
+                    return lhs.offset < rhs.offset
+                }
+                return lhsDate < rhsDate
+            }
+
+        for (position, entry) in ordered.enumerated() {
+            guard !entry.element.isBuiltIn else { continue }
+            entry.element.name = "\(baseName)_V\(position + 1)"
+        }
+    }
+
     private static func makeStatistics(
         for records: [YamSheetPlayerRecord],
         currentPlayers: [Player],
@@ -294,7 +347,7 @@ enum YamSheetBackupService {
             let stats = statsByPlayerID[player.id]
             return YamSheetPlayerStatisticsRecord(
                 playerID: player.id,
-                displayName: player.nickname,
+                displayName: player.resolvedDisplayName,
                 gamesPlayed: stats?.gamesPlayed ?? 0,
                 wins: stats?.wins ?? 0,
                 averageScore: stats?.avgScore ?? 0,
@@ -343,11 +396,29 @@ enum YamSheetBackupService {
     }
 }
 
+private func notationVersionBaseName(_ name: String) -> String {
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    let withoutVersion = trimmed.replacingOccurrences(
+        of: #"_V\d+$"#,
+        with: "",
+        options: [.regularExpression, .caseInsensitive]
+    )
+    return withoutVersion.isEmpty ? "Notation" : withoutVersion
+}
+
 private extension YamSheetPlayerRecord {
+    var resolvedDisplayName: String {
+        let nickname = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !nickname.isEmpty { return nickname }
+
+        let legacyName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return legacyName.isEmpty ? "Joueur importé" : legacyName
+    }
+
     init(_ player: Player) {
         id = player.id
-        name = player.name
-        nickname = player.nickname
+        name = player.displayName
+        nickname = player.displayName
         email = player.email
         favoriteEmoji = player.favoriteEmoji
         colorData = player.colorData
@@ -383,10 +454,11 @@ private extension YamSheetPlayerRecord {
     }
 
     func makePlayer() -> Player {
+        let displayName = resolvedDisplayName
         let player = Player(
             id: id,
-            name: name,
-            nickname: nickname,
+            name: displayName,
+            nickname: displayName,
             email: email,
             favoriteEmoji: favoriteEmoji,
             avatarImageData: avatarImageData,
@@ -554,8 +626,34 @@ private extension YamSheetScorecardRecord {
 }
 
 private extension YamSheetNotationRecord {
+    /// Compare les notations selon leur comportement réel plutôt que selon la
+    /// présence des champs ajoutés après la V1 dans le fichier de sauvegarde.
+    var duplicateDetectionRecord: YamSheetNotationRecord {
+        var record = self
+        record.name = notationVersionBaseName(name)
+        // La date départage les homonymes, mais ne fait pas partie des règles.
+        record.createdAt = nil
+        record.comment = normalizedOptionalText(comment)
+        record.tooltipUpper = normalizedOptionalText(tooltipUpper)
+        record.tooltipMiddle = normalizedOptionalText(tooltipMiddle)
+        record.tooltipBottom = normalizedOptionalText(tooltipBottom)
+        record.middleInvalidPairMode = middleInvalidPairMode ?? .keepSum
+        record.chanceEnabled = chanceEnabled ?? true
+        record.scoreHelpTexts = scoreHelpTexts ?? [:]
+        record.visibility = visibility ?? .allVisible
+        record.scorecardAppearance = scorecardAppearance ?? .standard
+        return record
+    }
+
+    private func normalizedOptionalText(_ text: String?) -> String? {
+        let normalized = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return normalized.isEmpty ? nil : normalized
+    }
+
     init(_ notation: Notation) {
         name = notation.name
+        createdAt = notation.createdAt
+        comment = notation.comment.isEmpty ? nil : notation.comment
         tooltipUpper = notation.tooltipUpper
         tooltipMiddle = notation.tooltipMiddle
         tooltipBottom = notation.tooltipBottom
@@ -581,11 +679,15 @@ private extension YamSheetNotationRecord {
         extraYamsBonusMode = notation.extraYamsBonusMode
         extraYamsBonusValue = notation.extraYamsBonusValue
         scoreHelpTexts = notation.scoreHelpTexts
+        visibility = notation.visibility
+        scorecardAppearance = notation.scorecardAppearance
     }
 
-    func makeNotation() -> Notation {
+    func makeNotation(legacyCreationDate: Date) -> Notation {
         let notation = Notation(
             name: name,
+            createdAt: createdAt ?? legacyCreationDate,
+            comment: comment ?? "",
             tooltipUpper: tooltipUpper,
             tooltipMiddle: tooltipMiddle,
             tooltipBottom: tooltipBottom,
@@ -613,6 +715,8 @@ private extension YamSheetNotationRecord {
         notation.suiteBigFixed2to6 = suiteBigFixed2to6
         notation.extraYamsBonusMode = extraYamsBonusMode
         notation.scoreHelpTexts = scoreHelpTexts ?? [:]
+        notation.visibility = visibility ?? .allVisible
+        notation.scorecardAppearance = scorecardAppearance ?? .standard
         return notation
     }
 }

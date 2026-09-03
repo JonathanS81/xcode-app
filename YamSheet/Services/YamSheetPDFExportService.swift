@@ -34,18 +34,13 @@ enum YamSheetPDFExportService {
                     : 0
 
                 writer.startPage(
-                    title: player.nickname,
+                    title: player.displayName,
                     subtitle: "Fiche joueur YamSheet · \(formatted(Date()))",
                     accentColor: readablePrintColor(for: player)
                 )
-                writer.row("Nom", player.name)
                 if let email = player.email, !email.isEmpty {
                     writer.row("Adresse e-mail", email)
                 }
-                if let emoji = player.favoriteEmoji, !emoji.isEmpty {
-                    writer.row("Emoji favori", emoji)
-                }
-
                 writer.section("Vue d’ensemble")
                 writer.metricCards([
                     ("Parties", "\(gamesPlayed)"),
@@ -248,26 +243,32 @@ enum YamSheetPDFExportService {
                 scoreValue(category.values($0))
             }
         }
-        rows.append(
-            ["Total section haute"] + scorecards.map {
-                "\(StatsEngine.upperTotal(sc: $0, game: game, col: 0))"
-            }
-        )
-        rows.append(
-            ["Total section milieu"] + scorecards.map {
-                "\(StatsEngine.middleTotal(sc: $0, game: game, col: 0))"
-            }
-        )
-        rows.append(
-            ["Yams réalisés"] + scorecards.map {
-                "\(StatsService.yamsCount(for: $0))"
-            }
-        )
-        rows.append(
-            ["Primes de Yams"] + scorecards.map {
-                "\(totalPrimes(for: $0))"
-            }
-        )
+        if game.notation.upperSectionIsEnabled {
+            rows.append(
+                ["Total section haute"] + scorecards.map {
+                    "\(StatsEngine.upperTotal(sc: $0, game: game, col: 0))"
+                }
+            )
+        }
+        if game.notation.middleSectionIsEnabled {
+            rows.append(
+                ["Total section milieu"] + scorecards.map {
+                    "\(StatsEngine.middleTotal(sc: $0, game: game, col: 0))"
+                }
+            )
+        }
+        if game.notation.isBottomFieldEnabled(.yams) {
+            rows.append(
+                ["Yams réalisés"] + scorecards.map {
+                    "\(StatsService.yamsCount(for: $0))"
+                }
+            )
+            rows.append(
+                ["Primes de Yams"] + scorecards.map {
+                    "\(totalPrimes(for: $0))"
+                }
+            )
+        }
         rows.append(
             ["TOTAL GÉNÉRAL"] + scorecards.map {
                 "\(StatsService.total(for: $0, game: game))"
@@ -279,27 +280,44 @@ enum YamSheetPDFExportService {
     private static func scoreCategories(
         for game: Game
     ) -> [(label: String, values: (Scorecard) -> [Int])] {
-        var rows: [(String, (Scorecard) -> [Int])] = [
-            ("As", { $0.ones }),
-            ("Deux", { $0.twos }),
-            ("Trois", { $0.threes }),
-            ("Quatre", { $0.fours }),
-            ("Cinq", { $0.fives }),
-            ("Six", { $0.sixes }),
-            ("Max", { $0.maxVals }),
-            ("Min", { $0.minVals }),
-            ("Brelan", { $0.brelan })
-        ]
-        if game.enableChance {
+        var rows: [(String, (Scorecard) -> [Int])] = []
+        if game.notation.upperSectionIsEnabled {
+            rows += [
+                ("As", { $0.ones }),
+                ("Deux", { $0.twos }),
+                ("Trois", { $0.threes }),
+                ("Quatre", { $0.fours }),
+                ("Cinq", { $0.fives }),
+                ("Six", { $0.sixes })
+            ]
+        }
+        if game.notation.middleSectionIsEnabled {
+            rows += [
+                ("Max", { $0.maxVals }),
+                ("Min", { $0.minVals })
+            ]
+        }
+        if game.notation.isBottomFieldEnabled(.brelan) {
+            rows.append(("Brelan", { $0.brelan }))
+        }
+        if game.notation.isBottomFieldEnabled(.chance) {
             rows.append(("Chance", { $0.chance }))
         }
-        rows.append(("Full", { $0.full }))
-        rows.append(("Grande suite", { $0.suite }))
-        if game.enableSmallStraight {
+        if game.notation.isBottomFieldEnabled(.full) {
+            rows.append(("Full", { $0.full }))
+        }
+        if game.notation.isBottomFieldEnabled(.suite) {
+            rows.append(("Grande suite", { $0.suite }))
+        }
+        if game.notation.isBottomFieldEnabled(.petiteSuite) {
             rows.append(("Petite suite", { $0.petiteSuite }))
         }
-        rows.append(("Carré", { $0.carre }))
-        rows.append(("Yams", { $0.yams }))
+        if game.notation.isBottomFieldEnabled(.carre) {
+            rows.append(("Carré", { $0.carre }))
+        }
+        if game.notation.isBottomFieldEnabled(.yams) {
+            rows.append(("Yams", { $0.yams }))
+        }
         return rows
     }
 
@@ -367,7 +385,7 @@ enum YamSheetPDFExportService {
         _ id: UUID,
         _ playersByID: [UUID: Player]
     ) -> String {
-        playersByID[id]?.nickname ?? "Joueur inconnu"
+        playersByID[id]?.displayName ?? "Joueur inconnu"
     }
 
     private static func makePDF(
@@ -433,7 +451,7 @@ enum YamSheetPDFExportService {
     }
 
     private static func playerSort(_ lhs: Player, _ rhs: Player) -> Bool {
-        lhs.nickname.localizedCaseInsensitiveCompare(rhs.nickname)
+        lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
             == .orderedAscending
     }
 

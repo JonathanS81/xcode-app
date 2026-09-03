@@ -35,11 +35,19 @@ struct YamSheetApp: App {
                 try? context.save()
             }
 
+            // Les deux notations de référence sont également installées lors
+            // d'une mise à jour, sans modifier les notations créées par l'utilisateur.
+            try BuiltInNotations.installIfNeeded(in: context)
+
             return container
         }catch {
             print("⚠️ Container error: \(error) → mémoire.")
             let mem = ModelConfiguration(isStoredInMemoryOnly: true)
-            return try! ModelContainer(for: schema, configurations: mem)
+            let container = try! ModelContainer(for: schema, configurations: mem)
+            let context = ModelContext(container)
+            context.insert(AppSettings())
+            try? BuiltInNotations.installIfNeeded(in: context)
+            return container
         }
     }()
 

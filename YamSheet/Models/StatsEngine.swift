@@ -16,6 +16,7 @@ struct StatsEngine {
     //helper
     static func extraYamsBonusAmount(sc: Scorecard, game: Game, col: Int) -> Int {
         guard game.enableExtraYamsBonus,                        // partie
+              game.notation.isBottomFieldEnabled(.yams),
               game.notation.extraYamsBonusValue > 0,            // notation (0 = off)
               game.extraYamsBonusMode != .disabled else {
             return 0
@@ -32,6 +33,7 @@ struct StatsEngine {
 
     // MARK: - Upper
     static func upperTotal(sc: Scorecard, game: Game, col: Int) -> Int {
+        guard game.notation.upperSectionIsEnabled else { return 0 }
         let u = [
             sc.ones[col], sc.twos[col], sc.threes[col],
             sc.fours[col], sc.fives[col], sc.sixes[col]
@@ -42,6 +44,7 @@ struct StatsEngine {
 
     // MARK: - Middle
     static func middleTotal(sc: Scorecard, game: Game, col: Int) -> Int {
+        guard game.notation.middleSectionIsEnabled else { return 0 }
         let maxV = norm(sc.maxVals[col])
         let minV = norm(sc.minVals[col])
         return middleScore(
@@ -122,19 +125,30 @@ struct StatsEngine {
 
     static func bottomTotal(sc: Scorecard, game: Game, col: Int) -> Int {
         let n = game.notation
+        guard n.bottomSectionIsEnabled else { return 0 }
 
-        let brelan       = applyFigureRule(sc.brelan[col],       rule: n.ruleBrelan)
-        let chance       = game.enableChance
+        let brelan       = n.isBottomFieldEnabled(.brelan)
+                            ? applyFigureRule(sc.brelan[col],    rule: n.ruleBrelan)
+                            : 0
+        let chance       = n.isBottomFieldEnabled(.chance)
                             ? applyFigureRule(sc.chance[col],    rule: n.ruleChance)
                             : 0
-        let full         = applyFigureRule(sc.full[col],         rule: n.ruleFull)
+        let full         = n.isBottomFieldEnabled(.full)
+                            ? applyFigureRule(sc.full[col],      rule: n.ruleFull)
+                            : 0
 
         // Les valeurs de Suite/Petite suite sont désormais *déjà finales* (0 ou valeur de la Notation)
-        let suite        = suiteScore(sc: sc, col: col)
-        let petiteSuite  = game.enableSmallStraight ? petiteSuiteScore(sc: sc, col: col) : 0
+        let suite        = n.isBottomFieldEnabled(.suite) ? suiteScore(sc: sc, col: col) : 0
+        let petiteSuite  = n.isBottomFieldEnabled(.petiteSuite)
+                            ? petiteSuiteScore(sc: sc, col: col)
+                            : 0
 
-        let carre        = applyFigureRule(sc.carre[col],        rule: n.ruleCarre)
-        let yams         = applyFigureRule(sc.yams[col],         rule: n.ruleYams)
+        let carre        = n.isBottomFieldEnabled(.carre)
+                            ? applyFigureRule(sc.carre[col],     rule: n.ruleCarre)
+                            : 0
+        let yams         = n.isBottomFieldEnabled(.yams)
+                            ? applyFigureRule(sc.yams[col],      rule: n.ruleYams)
+                            : 0
 
         // Prime centralisée ici : valeur unitaire × nombre d'attributions autorisées.
         let extra        = extraYamsBonusAmount(sc: sc, game: game, col: col)
@@ -157,31 +171,34 @@ struct StatsEngine {
     ) -> String {
         switch mode {
         case .multiplier:
-            return "Multiplicateur : (Max − Min) × nombre d’As. Si Max ≤ Min, la section vaut 0."
+            return "Le score obtenu correspond au nombre d’As multiplié par la différence entre le Max et le Min."
         case .bonusGate:
             let invalidText = invalidPairMode == .zeroSection
-                ? "la section vaut 0"
-                : "Max + Min est conservé sans bonus"
-            return "Bonus au 50 : si Max > Min et Max + Min ≥ \(threshold), +\(bonus). Si Max ≤ Min, \(invalidText)."
+                ? "Si le Min est supérieur ou égal au Max, toute la section vaut 0."
+                : "Si le Min est supérieur ou égal au Max, la section conserve la somme du Min et du Max, sans bonus."
+            return "Le Max doit être strictement supérieur au Min et la somme du Max et du Min doit atteindre le seuil de \(threshold) points pour obtenir un bonus de \(bonus) points. \(invalidText)"
         }
     }
 
     static func figureTooltip(notation n: NotationSnapshot, figure: FigureKind) -> String {
-        func desc(_ r: FigureRule) -> String {
+        func desc(_ r: FigureRule, field: BottomScoreField) -> String {
+            let sum = r.resolvedDiceBasis(for: field) == .fiveDice
+                ? "Somme des 5 dés"
+                : "Somme des dés de la figure"
             switch r.mode {
-            case .raw:           return "Somme saisie."
-            case .fixed:         return "Valeur fixe : \(r.fixedValue)."
-            case .rawPlusFixed:  return "Somme saisie + prime fixe \(r.fixedValue)."
-            case .rawTimes:      return "Somme saisie × multiplicateur \(max(1, r.multiplier))."
+            case .raw:           return "\(sum)."
+            case .fixed:         return "Prime fixe : \(r.fixedValue)."
+            case .rawPlusFixed:  return "\(sum) + prime fixe \(r.fixedValue)."
+            case .rawTimes:      return "\(sum) × multiplicateur \(max(1, r.multiplier))."
             }
         }
         switch figure {
-        case .brelan:      return "Brelan — " + desc(n.ruleBrelan)
-        case .chance:      return "Chance — " + desc(n.ruleChance)
-        case .full:        return "Full — " + desc(n.ruleFull)
-        case .carre:       return "Carré — " + desc(n.ruleCarre)
+        case .brelan:      return "Brelan — " + desc(n.ruleBrelan, field: .brelan)
+        case .chance:      return "Chance — " + desc(n.ruleChance, field: .chance)
+        case .full:        return "Full — " + desc(n.ruleFull, field: .full)
+        case .carre:       return "Carré — " + desc(n.ruleCarre, field: .carre)
         case .yams:
-            let base = "Yams — " + desc(n.ruleYams)
+            let base = "Yams — " + desc(n.ruleYams, field: .yams)
             switch n.resolvedExtraYamsBonusMode {
             case .disabled:
                 return base
@@ -198,7 +215,7 @@ struct StatsEngine {
                 return "Suite (5 dés) — 1–5 : \(n.suiteBigFixed1to5) ; 2–6 : \(n.suiteBigFixed2to6)."
             }
         case .petiteSuite:
-            return "Petite suite (4 dés) — " + desc(n.rulePetiteSuite)
+            return "Petite suite (4 dés) — " + desc(n.rulePetiteSuite, field: .petiteSuite)
         }
     }
 }
